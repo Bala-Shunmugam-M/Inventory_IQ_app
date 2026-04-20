@@ -15,6 +15,7 @@
     "ios": { "supportsTablet": true, "bundleIdentifier": "com.inventoryiq.app" },
     "android": {
       "package": "com.inventoryiq.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0B0F1A"
@@ -22,7 +23,10 @@
     },
     "web": { "favicon": "./assets/favicon.png" },
     "extra": {
-      "apiBaseUrl": "https://inventory-ai-51.preview.emergentagent.com"
-    }
+      "apiBaseUrl": "https://inventory-ai-51.preview.emergentagent.com",
+      "eas": { "projectId": "REPLACE_AFTER_EAS_INIT" }
+    },
+    "owner": "YOUR_EXPO_USERNAME",
+    "runtimeVersion": { "policy": "appVersion" }
   }
 }
