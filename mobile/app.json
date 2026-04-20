@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "InventoryIQ",
+    "slug": "inventoryiq",
+    "version": "4.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0B0F1A"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.inventoryiq.app" },
+    "android": {
+      "package": "com.inventoryiq.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0B0F1A"
+      }
+    },
+    "web": { "favicon": "./assets/favicon.png" },
+    "extra": {
+      "apiBaseUrl": "https://inventory-ai-51.preview.emergentagent.com"
+    }
+  }
+}

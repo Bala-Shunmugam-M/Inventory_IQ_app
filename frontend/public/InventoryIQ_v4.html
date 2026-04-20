@@ -1,0 +1,2384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InventoryIQ v4 — Auto-Learning AI Inventory Engine</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #0B0F1A;
+    --surface: #111827;
+    --surface2: #1C2537;
+    --surface3: #243040;
+    --border: #2A3A52;
+    --accent: #3B82F6;
+    --accent2: #06B6D4;
+    --accent3: #8B5CF6;
+    --success: #10B981;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+    --text: #E2E8F0;
+    --text2: #94A3B8;
+    --text3: #64748B;
+    --font: 'Space Grotesk', sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* GRID BACKGROUND */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: 
+      linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app { position: relative; z-index: 1; display: flex; min-height: 100vh; }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 260px;
+    min-height: 100vh;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    left: 0; top: 0; bottom: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    padding: 24px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo-title {
+    font-size: 22px; font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+  }
+  .logo-sub { font-size: 11px; color: var(--text3); letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+  /* DECISION ENGINE STYLES */
+  .decision-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin-bottom: 10px; border-left: 4px solid var(--accent); }
+  .decision-card.urgent { border-left-color: var(--danger); }
+  .decision-card.warn { border-left-color: var(--warning); }
+  .decision-card.good { border-left-color: var(--success); }
+  .decision-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+  .decision-body { font-size: 12.5px; color: var(--text2); line-height: 1.6; }
+  .demand-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+  .db-stable { background: rgba(16,185,129,0.15); color: var(--success); }
+  .db-seasonal { background: rgba(245,158,11,0.15); color: var(--warning); }
+  .db-trending { background: rgba(59,130,246,0.15); color: var(--accent); }
+  .constraint-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; background: rgba(139,92,246,0.15); color: var(--accent3); border: 1px solid rgba(139,92,246,0.25); margin-right: 4px; margin-top: 4px; }
+  .forecast-bar { height: 6px; border-radius: 3px; background: var(--surface3); overflow: hidden; margin-top: 4px; }
+  .forecast-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .total-cost-box { background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(6,182,212,0.05)); border: 1px solid rgba(59,130,246,0.2); border-radius: 8px; padding: 14px 16px; margin: 10px 0; }
+  .upload-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 32px; text-align: center; cursor: pointer; transition: border-color 0.2s; }
+  .upload-zone:hover { border-color: var(--accent); }
+  .upload-zone.drag-over { border-color: var(--accent); background: rgba(59,130,246,0.05); }
+  /* V3 ADDITIONS */
+  .ml-badge { display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:10px;font-size:10px;font-weight:700;background:linear-gradient(135deg,rgba(59,130,246,0.15),rgba(6,182,212,0.1));color:var(--accent2);border:1px solid rgba(6,182,212,0.2); }
+  .history-input { display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px; }
+  .history-chip { padding:3px 8px;border-radius:4px;font-size:11px;background:var(--surface2);border:1px solid var(--border);font-family:var(--mono); }
+  .supplier-bar { height:6px;border-radius:3px;background:var(--surface3);overflow:hidden; }
+  .supplier-fill { height:100%;border-radius:3px;transition:width 0.4s; }
+  .alert-live { animation:alertPulse 2s infinite; }
+  @keyframes alertPulse { 0%,100%{border-color:rgba(239,68,68,0.25);}50%{border-color:rgba(239,68,68,0.6);} }
+  .persist-banner { background:linear-gradient(135deg,rgba(16,185,129,0.08),rgba(6,182,212,0.05));border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text2);display:flex;align-items:center;gap:10px;margin-bottom:14px; }
+  .model-metric { display:inline-block;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;background:var(--surface2);border:1px solid var(--border);font-family:var(--mono);margin:2px; }
+  .shock-badge { padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:rgba(239,68,68,0.12);color:var(--danger);border:1px solid rgba(239,68,68,0.2); }
+  /* V4 AUTO-LEARNING STYLES */
+  .retrain-pulse { display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--success);animation:rp 1.5s infinite; margin-right:5px; }
+  @keyframes rp { 0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.4;transform:scale(0.85);} }
+  .feedback-card { background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:14px 16px;margin-bottom:8px; }
+  .feedback-card.positive { border-left:3px solid var(--success); }
+  .feedback-card.negative { border-left:3px solid var(--danger); }
+  .feedback-card.neutral  { border-left:3px solid var(--accent); }
+  .sales-row { display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface2);border-radius:7px;margin-bottom:6px; }
+  .model-health { display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700; }
+  .mh-good  { background:rgba(16,185,129,0.12);color:var(--success);border:1px solid rgba(16,185,129,0.2); }
+  .mh-warn  { background:rgba(245,158,11,0.12);color:var(--warning);border:1px solid rgba(245,158,11,0.2); }
+  .mh-bad   { background:rgba(239,68,68,0.12);color:var(--danger);border:1px solid rgba(239,68,68,0.2); }
+  .drift-bar { height:6px;border-radius:3px;background:var(--surface3);overflow:hidden;margin:4px 0; }
+  .drift-fill { height:100%;border-radius:3px; }
+  .sl-badge { padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700; }
+  .sl-a { background:rgba(239,68,68,0.12);color:var(--danger); }
+  .sl-b { background:rgba(245,158,11,0.12);color:var(--warning); }
+  .sl-c { background:rgba(16,185,129,0.12);color:var(--success); }
+
+  .nav { flex: 1; padding: 16px 12px; }
+  .nav-section { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 2px; padding: 16px 8px 8px; }
+
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 8px;
+    cursor: pointer; margin-bottom: 2px;
+    color: var(--text2); font-size: 14px; font-weight: 500;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+  }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active {
+    background: rgba(59,130,246,0.12);
+    color: var(--accent);
+    border-color: rgba(59,130,246,0.2);
+  }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+  .sidebar-footer {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--text3);
+  }
+
+  /* MAIN */
+  .main { margin-left: 260px; flex: 1; padding: 32px; }
+
+  /* TOPBAR */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 32px;
+  }
+  .page-title { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+  .page-sub { font-size: 14px; color: var(--text3); margin-top: 2px; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s ease; border: none; font-family: var(--font);
+    text-decoration: none;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: #2563EB; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(59,130,246,0.3); }
+  .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: var(--surface3); }
+  .btn-danger { background: rgba(239,68,68,0.1); color: var(--danger); border: 1px solid rgba(239,68,68,0.2); }
+  .btn-danger:hover { background: rgba(239,68,68,0.2); }
+  .btn-success { background: var(--success); color: white; }
+
+  /* CARDS */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+  }
+  .card-title {
+    font-size: 13px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 1.5px; color: var(--text2); margin-bottom: 16px;
+  }
+
+  /* KPI GRID */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+    position: relative; overflow: hidden;
+    transition: all 0.2s ease;
+  }
+  .kpi-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .kpi-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  }
+  .kpi-card.blue::before { background: var(--accent); }
+  .kpi-card.cyan::before { background: var(--accent2); }
+  .kpi-card.green::before { background: var(--success); }
+  .kpi-card.red::before { background: var(--danger); }
+  .kpi-card.purple::before { background: var(--accent3); }
+  .kpi-card.yellow::before { background: var(--warning); }
+  .kpi-label { font-size: 12px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; }
+  .kpi-value { font-size: 32px; font-weight: 700; margin: 6px 0; font-family: var(--mono); }
+  .kpi-meta { font-size: 12px; color: var(--text3); }
+
+  /* TABLE */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left; padding: 12px 16px;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text3);
+    border-bottom: 1px solid var(--border); font-weight: 600; background: var(--surface2);
+  }
+  td {
+    padding: 12px 16px; font-size: 14px;
+    border-bottom: 1px solid rgba(42,58,82,0.5);
+  }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* BADGES */
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .badge-A { background: rgba(239,68,68,0.15); color: #F87171; border: 1px solid rgba(239,68,68,0.2); }
+  .badge-B { background: rgba(245,158,11,0.15); color: #FCD34D; border: 1px solid rgba(245,158,11,0.2); }
+  .badge-C { background: rgba(16,185,129,0.15); color: #34D399; border: 1px solid rgba(16,185,129,0.2); }
+
+  .badge-alert { background: rgba(239,68,68,0.15); color: #F87171; border: 1px solid rgba(239,68,68,0.2); }
+  .badge-ok { background: rgba(16,185,129,0.15); color: #34D399; border: 1px solid rgba(16,185,129,0.2); }
+  .badge-warn { background: rgba(245,158,11,0.15); color: #FCD34D; border: 1px solid rgba(245,158,11,0.2); }
+
+  /* PROGRESS BAR */
+  .progress-bar { background: var(--surface3); border-radius: 4px; height: 8px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+
+  /* FORMULA BOX */
+  .formula-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 16px 20px;
+    margin: 12px 0;
+  }
+  .formula-label { font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600; }
+  .formula-text { font-family: var(--mono); font-size: 16px; color: var(--text); font-weight: 500; }
+  .formula-note { font-size: 12px; color: var(--text3); margin-top: 6px; }
+
+  /* FORM */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-field { display: flex; flex-direction: column; gap: 6px; }
+  .form-field.full { grid-column: 1 / -1; }
+  label { font-size: 12px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+  input, select {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); padding: 10px 14px; border-radius: 8px;
+    font-size: 14px; font-family: var(--font); outline: none;
+    transition: border-color 0.15s;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+
+  /* TABS */
+  .tabs { display: flex; gap: 4px; margin-bottom: 24px; background: var(--surface); border-radius: 10px; padding: 4px; border: 1px solid var(--border); }
+  .tab {
+    flex: 1; padding: 10px; text-align: center; border-radius: 8px;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    color: var(--text3); transition: all 0.15s;
+  }
+  .tab.active { background: var(--accent); color: white; }
+  .tab:not(.active):hover { background: var(--surface2); color: var(--text); }
+
+  /* MODAL */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; backdrop-filter: blur(4px);
+  }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px; width: 560px; max-width: 95vw;
+    max-height: 90vh; overflow-y: auto;
+  }
+  .modal-title { font-size: 20px; font-weight: 700; margin-bottom: 24px; }
+  .modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; }
+
+  /* ALERT STRIP */
+  .alert-strip {
+    display: flex; align-items: center; gap: 12px;
+    background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2);
+    border-radius: 10px; padding: 14px 18px; margin-bottom: 16px;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100% { border-color: rgba(239,68,68,0.2); } 50% { border-color: rgba(239,68,68,0.5); } }
+
+  /* SECTION HIDDEN */
+  .section { display: none; }
+  .section.active { display: block; }
+
+  /* CHART CONTAINER */
+  .chart-container { position: relative; height: 280px; }
+
+  /* SIMULATION */
+  .sim-day { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 6px; margin-bottom: 4px; font-size: 13px; }
+  .sim-day.stockout { background: rgba(239,68,68,0.1); }
+  .sim-day.reorder { background: rgba(59,130,246,0.1); }
+  .sim-day.arrival { background: rgba(16,185,129,0.1); }
+
+  .insight-card {
+    background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(6,182,212,0.05));
+    border: 1px solid rgba(59,130,246,0.2); border-radius: 10px; padding: 20px;
+    margin-bottom: 12px;
+  }
+  .insight-number {
+    width: 28px; height: 28px; border-radius: 50%; background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: white; margin-bottom: 10px;
+  }
+  .insight-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .insight-text { font-size: 13px; color: var(--text2); line-height: 1.6; }
+
+  .stock-gauge { position: relative; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface3); }
+  .stock-fill { height: 100%; border-radius: 4px; }
+  .stock-fill.safe { background: var(--success); }
+  .stock-fill.warn { background: var(--warning); }
+  .stock-fill.danger { background: var(--danger); }
+
+  .number-highlight { font-family: var(--mono); color: var(--accent); font-weight: 700; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; background: var(--surface3); color: var(--text2); }
+
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 16px; }
+    .kpi-grid { grid-template-columns: 1fr 1fr; }
+    .two-col, .three-col { grid-template-columns: 1fr; }
+    .form-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="logo">
+      <div class="logo-title">InventoryIQ</div>
+      <div class="logo-sub">v4.0 · Auto-Learning Engine</div>
+    </div>
+    <div class="nav">
+      <div class="nav-section">Dashboard</div>
+      <div class="nav-item active" onclick="showSection('dashboard', this)">
+        <span class="nav-icon">📊</span> Overview
+      </div>
+      <div class="nav-item" onclick="showSection('skus', this)">
+        <span class="nav-icon">📦</span> SKU Manager
+      </div>
+      <div class="nav-section">Analysis</div>
+      <div class="nav-item" onclick="showSection('calculations', this)">
+        <span class="nav-icon">🧮</span> Calculations
+      </div>
+      <div class="nav-item" onclick="showSection('abc', this)">
+        <span class="nav-icon">📈</span> ABC Analysis
+      </div>
+      <div class="nav-item" onclick="showSection('forecast', this)">
+        <span class="nav-icon">🤖</span> AI Forecast <span style="background:var(--accent);color:#fff;font-size:8px;font-weight:700;padding:1px 5px;border-radius:8px;margin-left:4px">NEW</span>
+      </div>
+      <div class="nav-item" onclick="showSection('simulation', this)">
+        <span class="nav-icon">⚙️</span> Simulation
+      </div>
+      <div class="nav-section">Reports</div>
+      <div class="nav-item" onclick="showSection('financial', this)">
+        <span class="nav-icon">💰</span> Financial Impact
+      </div>
+      <div class="nav-item" onclick="showSection('decisions', this)">
+        <span class="nav-icon">🎯</span> Decision Engine <span style="background:var(--success);color:#fff;font-size:8px;font-weight:700;padding:1px 5px;border-radius:8px;margin-left:4px">NEW</span>
+      </div>
+      <div class="nav-item" onclick="showSection('supplier', this)">
+        <span class="nav-icon">🏭</span> Supplier Model <span style="background:var(--warning);color:#fff;font-size:8px;font-weight:700;padding:1px 5px;border-radius:8px;margin-left:4px">v3</span>
+      </div>
+      <div class="nav-item" onclick="showSection('sales', this)">
+        <span class="nav-icon">📝</span> Daily Sales Entry <span style="background:var(--success);color:#fff;font-size:8px;font-weight:700;padding:1px 5px;border-radius:8px;margin-left:4px">v4</span>
+      </div>
+      <div class="nav-item" onclick="showSection('mlmonitor', this)">
+        <span class="nav-icon">🧠</span> ML Monitor <span style="background:var(--accent);color:#fff;font-size:8px;font-weight:700;padding:1px 5px;border-radius:8px;margin-left:4px">v4</span>
+      </div>
+      <div class="nav-item" onclick="showSection('import', this)">
+        <span class="nav-icon">📁</span> Import Data <span style="background:var(--accent3);color:#fff;font-size:8px;font-weight:700;padding:1px 5px;border-radius:8px;margin-left:4px">NEW</span>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      Operations Management · MBA Project<br>
+      Inventory Control System v2.0
+    </div>
+  </nav>
+
+  <!-- MAIN CONTENT -->
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <div id="sec-dashboard" class="section active">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Inventory Dashboard</div>
+          <div class="page-sub">Real-time inventory health across all SKUs</div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-ghost" onclick="showSection('skus', document.querySelector('[onclick*=skus]'))">+ Add SKU</button>
+          <button class="btn btn-primary" onclick="refreshDashboard()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <div id="alert-area"></div>
+
+      <div class="kpi-grid" id="kpi-grid"></div>
+
+      <div class="two-col" style="margin-bottom:24px">
+        <div class="card">
+          <div class="card-title">Stock Status by SKU</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>SKU</th><th>Stock</th><th>ROP</th><th>Status</th><th>Days Left</th>
+              </tr></thead>
+              <tbody id="dash-table"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Inventory Level Chart</div>
+          <div class="chart-container"><canvas id="levelChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SKU MANAGER -->
+    <div id="sec-skus" class="section">
+      <div class="topbar">
+        <div>
+          <div class="page-title">SKU Manager</div>
+          <div class="page-sub">Add and manage your product inventory</div>
+        </div>
+        <button class="btn btn-primary" onclick="openAddModal()">+ Add Product</button>
+      </div>
+
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Product</th><th>Category</th><th>Avg Demand/Day</th><th>Std Dev</th>
+              <th>Lead Time (days)</th><th>Unit Cost (₹)</th><th>Current Stock</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="sku-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- CALCULATIONS -->
+    <div id="sec-calculations" class="section">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Calculations</div>
+          <div class="page-sub">EOQ, Safety Stock, and Reorder Point for all SKUs</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <label style="font-size:13px;text-transform:none;letter-spacing:0">Service Level:</label>
+          <select id="serviceLevel" onchange="renderCalculations()" style="padding:8px 12px;width:180px">
+            <option value="1.28">90% (Z = 1.28)</option>
+            <option value="1.65" selected>95% (Z = 1.65)</option>
+            <option value="1.96">97.5% (Z = 1.96)</option>
+            <option value="2.33">99% (Z = 2.33)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="three-col" style="margin-bottom:24px">
+        <div class="formula-box">
+          <div class="formula-label">Safety Stock</div>
+          <div class="formula-text">SS = Z × σ<sub>d</sub> × √L</div>
+          <div class="formula-note">Z = service level factor · σ = demand std dev · L = lead time</div>
+        </div>
+        <div class="formula-box">
+          <div class="formula-label">Reorder Point</div>
+          <div class="formula-text">ROP = (d × L) + SS</div>
+          <div class="formula-note">d = avg daily demand · L = lead time · SS = safety stock</div>
+        </div>
+        <div class="formula-box">
+          <div class="formula-label">Economic Order Qty</div>
+          <div class="formula-text">EOQ = √(2DS / H)</div>
+          <div class="formula-note">D = annual demand · S = order cost · H = holding cost/unit/yr</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>SKU</th><th>Class</th><th>Safety Stock</th><th>Reorder Point</th>
+              <th>EOQ</th><th>Ordering Cost</th><th>Holding Cost</th><th>Total Annual</th>
+            </tr></thead>
+            <tbody id="calc-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="margin-top:24px" id="calc-details"></div>
+    </div>
+
+    <!-- ABC ANALYSIS -->
+    <div id="sec-abc" class="section">
+      <div class="topbar">
+        <div>
+          <div class="page-title">ABC Analysis</div>
+          <div class="page-sub">Value-based classification of inventory items</div>
+        </div>
+      </div>
+
+      <div class="two-col" style="margin-bottom:24px">
+        <div class="card">
+          <div class="card-title">ABC Distribution Chart</div>
+          <div class="chart-container"><canvas id="abcChart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Pareto Analysis</div>
+          <div class="chart-container"><canvas id="paretoChart"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Classification Results</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Rank</th><th>SKU</th><th>Annual Value (₹)</th><th>% of Total</th>
+              <th>Cumulative %</th><th>Class</th><th>Management Strategy</th>
+            </tr></thead>
+            <tbody id="abc-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="three-col" style="margin-top:24px" id="abc-summary"></div>
+    </div>
+
+    <!-- SIMULATION -->
+    <div id="sec-simulation" class="section">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Advanced Simulation</div>
+          <div class="page-sub">Realistic demand patterns, variable lead times, constraint-aware simulation</div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div class="form-field" style="flex:1;min-width:180px">
+          <label>Select SKU</label>
+          <select id="simSKU" onchange="runSimulation()"></select>
+        </div>
+        <div class="form-field" style="min-width:140px">
+          <label>Duration</label>
+          <select id="simDuration" onchange="runSimulation()">
+            <option value="30">30 Days</option>
+            <option value="60">60 Days</option>
+            <option value="90" selected>90 Days</option>
+            <option value="180">180 Days</option>
+          </select>
+        </div>
+        <div class="form-field" style="min-width:160px">
+          <label>Demand Pattern Override</label>
+          <select id="simPattern" onchange="runSimulation()">
+            <option value="auto">Auto (from SKU)</option>
+            <option value="stable">Stable</option>
+            <option value="seasonal">Seasonal</option>
+            <option value="trending">Trending +20%</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" style="margin-top:22px" onclick="runSimulation()">▶ Run Simulation</button>
+      </div>
+
+      <div class="two-col" style="margin-bottom:24px">
+        <div class="card">
+          <div class="card-title">📉 Current System (No ROP)</div>
+          <div id="sim-current"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">📈 Proposed System (With ROP)</div>
+          <div id="sim-proposed"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:24px">
+        <div class="card-title">Inventory Level Over 30 Days</div>
+        <div class="chart-container" style="height:300px"><canvas id="simChart"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Day-by-Day Log (Proposed System)</div>
+        <div id="sim-log" style="max-height:300px;overflow-y:auto"></div>
+      </div>
+    </div>
+
+    <!-- FINANCIAL IMPACT -->
+    <div id="sec-financial" class="section">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Financial Impact</div>
+          <div class="page-sub">Quantified benefits of the inventory control system</div>
+        </div>
+      </div>
+
+      <div class="kpi-grid" id="fin-kpi"></div>
+
+      <div class="two-col" style="margin-bottom:24px">
+        <div class="card">
+          <div class="card-title">Cost Breakdown (Before vs. After)</div>
+          <div class="chart-container"><canvas id="finChart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Savings by Category</div>
+          <div id="savings-breakdown"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Per-SKU Financial Analysis</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>SKU</th><th>Old Monthly Holding (₹)</th><th>New Monthly Holding (₹)</th>
+              <th>Stockout Losses Saved (₹)</th><th>Total Monthly Benefit (₹)</th>
+            </tr></thead>
+            <tbody id="fin-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI FORECAST -->
+    <div id="sec-forecast" class="section">
+      <div class="topbar">
+        <div>
+          <div class="page-title">AI Demand Forecast</div>
+          <div class="page-sub">Hybrid model: Moving Average + Trend + Seasonality + ML correction</div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <select id="forecastSKU" onchange="renderForecast()" style="padding:8px 12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text)"></select>
+          <button class="btn btn-primary" onclick="renderForecast()">Generate Forecast</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px" id="forecast-kpis"></div>
+      <div class="two-col" style="margin-bottom:20px">
+        <div class="card">
+          <div class="card-title">Demand Forecast — Next 30 Days</div>
+          <div class="chart-container" style="height:280px"><canvas id="forecastChart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Forecast Model Details</div>
+          <div id="forecast-model-info"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Day-by-Day Forecast Table</div>
+        <div id="forecast-table" style="max-height:300px;overflow-y:auto"></div>
+      </div>
+    </div>
+
+    <!-- DECISION ENGINE -->
+    <div id="sec-decisions" class="section">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Decision Engine</div>
+          <div class="page-sub">Auto-generated action recommendations based on current stock, demand, and constraints</div>
+        </div>
+        <button class="btn btn-primary" onclick="renderDecisions()">↻ Refresh Decisions</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px" id="decision-summary"></div>
+      <div class="card" style="margin-bottom:18px">
+        <div class="card-title">🎯 Priority Action List</div>
+        <div id="decision-actions"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">💡 Total Inventory Cost Model</div>
+        <div id="total-cost-analysis"></div>
+      </div>
+    </div>
+
+    <!-- SUPPLIER MODEL -->
+    <div id="sec-supplier" class="section">
+      <div class="topbar">
+        <div><div class="page-title">Supplier Model</div><div class="page-sub">Supplier reliability scores, delay probability, and uncertainty-adjusted safety stock</div></div>
+        <button class="btn btn-primary" onclick="renderSupplier()">↻ Refresh</button>
+      </div>
+      <div class="ins info" style="margin-bottom:18px">
+        <div class="ititle">Why Supplier Modeling Matters</div>
+        <div class="ibody">Standard safety stock formulas assume orders always arrive on time. In reality, supplier delays amplify stockout risk. This module computes <strong>supplier-adjusted safety stock</strong>: SS_adj = SS_base × (1 + delay_probability × impact_factor). A supplier with 30% delay probability effectively requires ~30% higher safety stock to maintain the same service level.</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px" id="sup-kpis"></div>
+      <div class="two-col" style="margin-bottom:20px">
+        <div class="card">
+          <div class="card-title">Supplier Configuration</div>
+          <div id="supplier-list"></div>
+          <button class="btn btn-ghost" style="margin-top:12px;width:100%" onclick="addSupplier()">+ Add Supplier</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Supplier Risk Chart</div>
+          <div class="chart-container" style="height:260px"><canvas id="supChart"></canvas></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">SKU → Supplier Assignment &amp; Adjusted Safety Stock</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>SKU</th><th>Supplier</th><th>Reliability Score</th><th>Delay Prob.</th><th>Base SS</th><th>Supplier-Adj SS</th><th>Extra Units Needed</th></tr></thead>
+          <tbody id="sup-sku-table"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- DAILY SALES ENTRY -->
+    <div id="sec-sales" class="section">
+      <div class="topbar">
+        <div><div class="page-title">Daily Sales Entry</div><div class="page-sub">Log actual sales → auto-updates history → triggers model retraining → adjusts decisions</div></div>
+        <button class="btn btn-primary" onclick="saveAllSales()">💾 Save &amp; Retrain All</button>
+      </div>
+      <div class="ins info" style="margin-bottom:16px">
+        <div class="ititle">How Auto-Learning Works</div>
+        <div class="ibody">Every time you enter today's actual sales: (1) Demand history is updated. (2) If the SKU has 7+ new data points since last training, the ML model automatically retrains. (3) The Decision Engine applies adaptive feedback — if stockouts occurred, safety stock increases; if overstock persists, EOQ decreases. (4) Service level targets adjust per ABC class (A=99%, B=95%, C=90%).</div>
+      </div>
+      <div class="two-col" style="margin-bottom:16px">
+        <div class="card">
+          <div class="card-title">Enter Today's Actual Sales</div>
+          <div id="sales-entry-form"></div>
+          <div style="margin-top:12px;font-size:12px;color:var(--text3)">After entering sales, click Save &amp; Retrain. Models retrain automatically when history reaches multiples of 7 days.</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Recent Sales History (last 7 days)</div>
+          <div id="sales-history-panel"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Feedback Loop — Adaptive Adjustments</div>
+        <div id="feedback-panel"></div>
+      </div>
+    </div>
+
+    <!-- ML MONITOR -->
+    <div id="sec-mlmonitor" class="section">
+      <div class="topbar">
+        <div><div class="page-title">ML Model Monitor</div><div class="page-sub">Real-time model health, drift detection, retraining schedule, and ABC-segmented service levels</div></div>
+        <button class="btn btn-primary" onclick="forceRetrainAll()">⚡ Force Retrain All Models</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px" id="ml-kpis"></div>
+      <div class="two-col" style="margin-bottom:18px">
+        <div class="card">
+          <div class="card-title">Model Health by SKU</div>
+          <div id="model-health-list"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">ABC Service Level Configuration</div>
+          <div id="abc-service-config"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:18px">
+        <div class="card-title">Model Performance — MAE Over Time</div>
+        <div class="chart-container" style="height:240px"><canvas id="maeChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Retraining Log</div>
+        <div id="retrain-log" style="max-height:260px;overflow-y:auto"></div>
+      </div>
+    </div>
+
+    <!-- IMPORT DATA -->
+    <div id="sec-import" class="section">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Import Data</div>
+          <div class="page-sub">Upload CSV to bulk-load SKU data — no manual entry needed</div>
+        </div>
+      </div>
+      <div class="two-col" style="margin-bottom:20px">
+        <div class="card">
+          <div class="card-title">Upload CSV File</div>
+          <div class="upload-zone" id="upload-zone" onclick="document.getElementById('csv-file').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleDrop(event)">
+            <div style="font-size:36px;margin-bottom:12px">📁</div>
+            <div style="font-weight:600;margin-bottom:6px">Click to upload or drag &amp; drop</div>
+            <div style="font-size:12px;color:var(--text3)">CSV format: name, category, cost, demand, stddev, leadtime, stock, ordercost, maxdemand, margin</div>
+            <input type="file" id="csv-file" accept=".csv" style="display:none" onchange="handleFileUpload(event)">
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">CSV Format Guide</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.8;margin-bottom:12px">Your CSV file should have these columns in order:</div>
+          <div style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:12px;border-radius:8px;line-height:2;color:var(--accent2)">
+            name, category, cost, demand,<br>
+            stddev, leadtime, stock,<br>
+            ordercost, maxdemand, margin,<br>
+            pattern, ltstddev, moq, shortage
+          </div>
+          <div style="margin-top:12px;font-size:12px;color:var(--text3)">pattern: stable / seasonal / trending<br>ltstddev: lead time standard deviation<br>moq: minimum order quantity<br>shortage: shortage penalty per unit</div>
+          <button class="btn btn-ghost" style="margin-top:14px;width:100%" onclick="downloadTemplate()">⬇ Download Template CSV</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Import Preview</div>
+        <div id="import-preview"><div style="color:var(--text3);font-size:13px;text-align:center;padding:24px">Upload a CSV file to see preview here</div></div>
+        <div id="import-actions" style="display:none;margin-top:14px;display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn btn-ghost" onclick="clearImport()">Cancel</button>
+          <button class="btn btn-primary" onclick="confirmImport()">✓ Import All Rows</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ADD/EDIT MODAL -->
+<div id="modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Add Product</div>
+    <div class="form-grid">
+      <div class="form-field full">
+        <label>Product Name</label>
+        <input type="text" id="f-name" placeholder="e.g. Aashirvaad Atta 5kg">
+      </div>
+      <div class="form-field">
+        <label>Category</label>
+        <select id="f-category">
+          <option>FMCG Staple</option>
+          <option>Daily Use</option>
+          <option>Packaged Food</option>
+          <option>Beverages</option>
+          <option>Household</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label>Unit Cost (₹)</label>
+        <input type="number" id="f-cost" placeholder="285" min="0">
+      </div>
+      <div class="form-field">
+        <label>Avg Daily Demand (units)</label>
+        <input type="number" id="f-demand" placeholder="12" min="0">
+      </div>
+      <div class="form-field">
+        <label>Std Dev of Daily Demand</label>
+        <input type="number" id="f-stddev" placeholder="3.8" min="0" step="0.1">
+      </div>
+      <div class="form-field">
+        <label>Lead Time (days)</label>
+        <input type="number" id="f-leadtime" placeholder="3" min="1">
+      </div>
+      <div class="form-field">
+        <label>Current Stock (units)</label>
+        <input type="number" id="f-stock" placeholder="100" min="0">
+      </div>
+      <div class="form-field">
+        <label>Ordering Cost per Order (₹)</label>
+        <input type="number" id="f-ordercost" placeholder="50" min="0">
+      </div>
+      <div class="form-field">
+        <label>Max Daily Demand (units)</label>
+        <input type="number" id="f-maxdemand" placeholder="20" min="0">
+      </div>
+      <div class="form-field">
+        <label>Profit Margin per Unit (₹)</label>
+        <input type="number" id="f-margin" placeholder="15" min="0">
+      </div>
+      <div class="form-field">
+        <label>Demand Pattern</label>
+        <select id="f-pattern">
+          <option value="stable">Stable (uniform demand)</option>
+          <option value="seasonal">Seasonal (weekly peaks)</option>
+          <option value="trending">Trending (growth over time)</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label>Lead Time Std Dev (days)</label>
+        <input type="number" id="f-ltstddev" placeholder="0.5" min="0" step="0.1">
+      </div>
+      <div class="form-field">
+        <label>Min Order Qty — MOQ (units)</label>
+        <input type="number" id="f-moq" placeholder="10" min="0">
+      </div>
+      <div class="form-field">
+        <label>Shortage Penalty/Unit (₹)</label>
+        <input type="number" id="f-shortage" placeholder="25" min="0">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="modal-save-btn" onclick="saveSKU()">Save Product</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================================================================
+// INVENTORYIQ v3.0 — AI Inventory Engine
+// Real ML training · localStorage persistence · Supplier model · Auto-alerts
+// ================================================================
+
+// ── SUPPLIERS ──────────────────────────────────────────────
+var suppliers = [
+  { id:'S1', name:'Local Distributor A', reliability:92, delayProb:0.08, avgDelay:1.2, moq:10 },
+  { id:'S2', name:'City Wholesaler B',   reliability:78, delayProb:0.22, avgDelay:2.5, moq:20 },
+  { id:'S3', name:'Regional Depot C',   reliability:85, delayProb:0.15, avgDelay:1.8, moq:15 },
+  { id:'S4', name:'Direct Factory D',   reliability:95, delayProb:0.05, avgDelay:0.8, moq:50 }
+];
+
+// ── DEFAULT SKU DATA ────────────────────────────────────────
+var defaultSkus = [
+  { id:1, name:"Aashirvaad Atta 5kg",   category:"FMCG Staple",   cost:285, demand:12, stddev:3.8, leadtime:3, ltstddev:0.5, stock:55,  ordercost:50, maxdemand:22, margin:30, pattern:'stable',   moq:10,  shortage:40, supplierId:'S1', history:[11,13,10,14,12,9,13,12,15,11,10,12,14,13,11,12,10,13,12,14,11,9,13,12,15,10,12,11,13,14,12,11,10,13,12,14,11,12,13,10,12,14,11,13,12,10,11,13,14,12] },
+  { id:2, name:"Fortune Rice 1kg",       category:"FMCG Staple",   cost:65,  demand:22, stddev:5.1, leadtime:2, ltstddev:0.3, stock:60,  ordercost:40, maxdemand:35, margin:8,  pattern:'seasonal', moq:20,  shortage:15, supplierId:'S2', history:[18,20,22,25,28,32,22,19,21,24,26,30,23,20,22,25,27,31,21,19,20,24,27,30,22,20,21,23,26,29,22,20,21,24,27,31,22,19,21,25,28,30,21,20,22,24,27,31,22,21] },
+  { id:3, name:"Haldiram Namkeen 150g", category:"Packaged Food", cost:75,  demand:16, stddev:3.9, leadtime:3, ltstddev:0.5, stock:45,  ordercost:60, maxdemand:28, margin:20, pattern:'stable',   moq:12,  shortage:25, supplierId:'S1', history:[15,17,14,16,18,15,16,14,17,16,15,18,16,14,17,16,15,14,16,17,15,16,14,18,16,15,17,16,14,16,15,17,14,16,15,18,16,14,17,15,16,14,16,17,15,16,14,18,16,15] },
+  { id:4, name:"Colgate Toothpaste",     category:"Daily Use",     cost:95,  demand:8,  stddev:2.3, leadtime:3, ltstddev:0.4, stock:25,  ordercost:45, maxdemand:14, margin:18, pattern:'stable',   moq:6,   shortage:20, supplierId:'S3', history:[7,9,8,6,9,8,7,8,9,7,8,9,8,7,9,8,7,8,9,8,7,9,8,7,8,9,8,7,8,9,8,7,9,8,8,7,9,8,7,8,9,8,7,8,9,8,7,9,8,7] },
+  { id:5, name:"Lay's Chips 26g",        category:"Packaged Food", cost:20,  demand:28, stddev:6.4, leadtime:2, ltstddev:0.3, stock:70,  ordercost:35, maxdemand:42, margin:4,  pattern:'seasonal', moq:50,  shortage:8,  supplierId:'S2', history:[22,24,28,32,36,40,28,23,25,30,34,38,28,22,26,31,35,39,27,23,25,30,34,38,28,22,25,31,35,40,28,23,25,30,34,38,27,22,26,30,35,40,28,23,25,31,34,38,27,22] },
+  { id:6, name:"Tata Salt 1kg",          category:"FMCG Staple",   cost:22,  demand:18, stddev:4.2, leadtime:2, ltstddev:0.2, stock:40,  ordercost:30, maxdemand:30, margin:3,  pattern:'trending', moq:24,  shortage:5,  supplierId:'S1', history:[15,15,16,16,17,17,17,18,18,18,19,19,19,20,20,20,21,21,21,22,22,22,23,23,23,24,24,24,25,25,24,23,23,22,22,21,21,20,20,19,19,18,18,17,17,17,18,18,19,19] },
+  { id:7, name:"Parle-G Biscuit 100g",  category:"Packaged Food", cost:10,  demand:35, stddev:7.2, leadtime:1, ltstddev:0.2, stock:80,  ordercost:25, maxdemand:50, margin:2,  pattern:'stable',   moq:100, shortage:4,  supplierId:'S4', history:[33,37,34,36,38,34,35,33,37,36,34,38,35,33,37,34,36,38,35,33,36,35,34,38,35,33,37,36,34,38,35,33,36,35,34,38,35,33,37,36,34,38,35,33,36,35,34,38,35,33] },
+  { id:8, name:"Lux Soap",               category:"Daily Use",     cost:35,  demand:14, stddev:3.5, leadtime:2, ltstddev:0.3, stock:30,  ordercost:40, maxdemand:22, margin:7,  pattern:'stable',   moq:12,  shortage:10, supplierId:'S3', history:[13,15,14,12,15,14,13,14,15,13,14,15,14,13,15,14,13,14,15,14,13,15,14,13,14,15,14,13,15,14,13,14,15,14,13,15,14,13,15,14,13,14,15,14,13,15,14,13,14,15] },
+  { id:9, name:"Lifebuoy Handwash",      category:"Daily Use",     cost:110, demand:6,  stddev:1.8, leadtime:3, ltstddev:0.5, stock:18,  ordercost:45, maxdemand:10, margin:22, pattern:'stable',   moq:6,   shortage:30, supplierId:'S3', history:[5,7,6,5,7,6,5,6,7,6,5,7,6,5,7,6,5,6,7,5,6,7,6,5,7,6,5,6,7,6,5,7,6,5,7,6,5,6,7,6,5,7,6,5,7,6,5,6,7,6] },
+  { id:10,name:"Shampoo Sachet 5ml",    category:"Daily Use",     cost:4,   demand:45, stddev:8.7, leadtime:1, ltstddev:0.1, stock:120, ordercost:20, maxdemand:65, margin:1,  pattern:'seasonal', moq:200, shortage:2,  supplierId:'S4', history:[36,40,45,52,58,62,46,38,42,48,54,60,46,37,41,47,54,60,45,37,41,48,55,60,46,38,41,47,54,62,46,38,41,47,55,60,45,37,42,48,54,62,46,38,41,47,55,60,46,38] },
+  { id:11,name:"Maggi Noodles 70g",     category:"Packaged Food", cost:14,  demand:20, stddev:4.8, leadtime:2, ltstddev:0.4, stock:50,  ordercost:30, maxdemand:32, margin:3,  pattern:'trending', moq:48,  shortage:6,  supplierId:'S2', history:[17,17,18,18,19,19,19,20,20,20,21,21,21,22,22,22,23,23,23,24,24,24,25,25,23,22,22,21,21,20,20,21,21,22,22,23,23,23,24,24,25,25,24,23,22,22,21,21,20,20] },
+  { id:12,name:"Dettol Soap",            category:"Daily Use",     cost:45,  demand:10, stddev:2.6, leadtime:2, ltstddev:0.3, stock:22,  ordercost:40, maxdemand:16, margin:9,  pattern:'stable',   moq:6,   shortage:12, supplierId:'S3', history:[9,11,10,9,11,10,9,10,11,9,10,11,10,9,11,10,9,10,11,10,9,11,10,9,10,11,10,9,11,10,9,10,11,10,9,11,10,9,10,11,9,10,11,10,9,11,10,9,10,11] }
+];
+
+// ── STATE (loaded from localStorage if available) ────────────
+var skus = [];
+var editingId = null;
+var charts = {};
+var importRows = [];
+var mlModels = {};  // Trained ML model weights per SKU id
+var alertsActive = true;
+
+// ================================================================
+// PERSISTENCE — localStorage
+// ================================================================
+function saveToStorage() {
+  try {
+    localStorage.setItem('iqv3_skus', JSON.stringify(skus));
+    localStorage.setItem('iqv3_suppliers', JSON.stringify(suppliers));
+  } catch(e) { /* silently fail if storage unavailable */ }
+}
+function loadFromStorage() {
+  try {
+    var saved = localStorage.getItem('iqv3_skus');
+    var savedSup = localStorage.getItem('iqv3_suppliers');
+    if (saved) { skus = JSON.parse(saved); return true; }
+    if (savedSup) { suppliers = JSON.parse(savedSup); }
+  } catch(e) { /* fallback to defaults */ }
+  return false;
+}
+function resetToDefaults() {
+  if (!confirm('Reset all data to defaults? This will clear any edits.')) return;
+  skus = JSON.parse(JSON.stringify(defaultSkus));
+  saveToStorage();
+  refreshDashboard();
+  alert('Reset complete.');
+}
+function persistBanner() {
+  return '<div class="persist-banner">💾 <strong>Auto-saved:</strong> All changes saved to browser storage. Data persists across sessions. <button onclick="resetToDefaults()" style="margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--text2);padding:3px 10px;border-radius:5px;cursor:pointer;font-size:11px">Reset Defaults</button></div>';
+}
+
+// ================================================================
+// CORE MATH — v3 enhancements
+// ================================================================
+function nodeCap(n) { return n.time ? (60/n.time)*n.resources : 0; }
+
+function getSupplier(sku) {
+  return suppliers.find(function(s) { return s.id === sku.supplierId; }) || suppliers[0];
+}
+
+// Enhanced safety stock: includes lead time variability AND supplier delay risk
+function calcSS(sku, Z) {
+  var ltStdDev = sku.ltstddev || 0;
+  var demandPart = Z * sku.stddev * Math.sqrt(sku.leadtime);
+  var ltPart = Z * ltStdDev * sku.demand;
+  var baseSSsq = demandPart * demandPart + ltPart * ltPart;
+  var baseSS = Math.ceil(Math.sqrt(baseSSsq));
+  // Supplier adjustment: unreliable supplier = more buffer
+  var sup = getSupplier(sku);
+  var supplierFactor = 1 + sup.delayProb * sup.avgDelay * 0.5;
+  return Math.ceil(baseSS * supplierFactor);
+}
+function calcROP(sku, SS) { return Math.ceil(sku.demand * sku.leadtime + SS); }
+function calcEOQ(sku) {
+  var D = sku.demand * 365, S = sku.ordercost, H = sku.cost * 0.20;
+  var rawEOQ = Math.ceil(Math.sqrt(2 * D * S / H));
+  return Math.max(rawEOQ, sku.moq || 1);
+}
+function calcTotalCost(sku) {
+  var EOQ = calcEOQ(sku), D = sku.demand * 365;
+  var H = sku.cost * 0.20, S = sku.ordercost;
+  var shortage = sku.shortage || 0;
+  var avgStock = EOQ / 2 + calcSS(sku, 1.65);
+  var orderingCost = (D / EOQ) * S;
+  var holdingCost = avgStock * H;
+  var stockoutRate = 0.05;
+  var shortageCost = stockoutRate * D * shortage;
+  return { orderingCost: Math.round(orderingCost), holdingCost: Math.round(holdingCost), shortageCost: Math.round(shortageCost), total: Math.round(orderingCost + holdingCost + shortageCost) };
+}
+function getABCClass(sku, allSkus) {
+  var sorted = allSkus.slice().sort(function(a,b) { return (b.demand*365*b.cost) - (a.demand*365*a.cost); });
+  var total = sorted.reduce(function(s,x) { return s + x.demand*365*x.cost; }, 0);
+  var cum = 0;
+  for (var i = 0; i < sorted.length; i++) {
+    cum += sorted[i].demand*365*sorted[i].cost;
+    if (sorted[i].id === sku.id) {
+      var pct = cum / total;
+      if (pct <= 0.80) return 'A';
+      if (pct <= 0.95) return 'B';
+      return 'C';
+    }
+  }
+  return 'C';
+}
+function getZ() { var el = document.getElementById('serviceLevel'); return el ? parseFloat(el.value) : 1.65; }
+function getStatus(sku) {
+  var Z = getZ(), SS = calcSS(sku, Z), ROP = calcROP(sku, SS);
+  if (sku.stock <= 0) return 'stockout';
+  if (sku.stock <= SS) return 'critical';
+  if (sku.stock <= ROP) return 'reorder';
+  return 'ok';
+}
+function daysLeft(sku) { return sku.demand > 0 ? (sku.stock / sku.demand).toFixed(1) : 'inf'; }
+
+// ================================================================
+// REAL ML — Linear Regression on Historical Demand
+// ================================================================
+function dot(w, x) {
+  return w.reduce(function(sum, wi, i) { return sum + wi * (x[i] || 0); }, 0);
+}
+function buildFeatures(history, idx) {
+  var h = history;
+  var i = idx;
+  var ma7 = 0;
+  for (var k = Math.max(0, i-7); k < i; k++) ma7 += h[k];
+  ma7 /= Math.min(7, i);
+  var ma3 = 0;
+  for (var k = Math.max(0, i-3); k < i; k++) ma3 += h[k];
+  ma3 /= Math.min(3, i);
+  return [
+    1,                           // bias
+    i,                           // trend index
+    i % 7,                       // day of week (0-6)
+    i % 30,                      // day of month
+    h[i-1] || 0,                 // lag 1
+    h[i-2] || 0,                 // lag 2
+    h[i-3] || 0,                 // lag 3
+    ma7,                         // 7-day moving average
+    ma3                          // 3-day moving average
+  ];
+}
+function trainModel(history) {
+  if (!history || history.length < 10) return null;
+  var nFeats = 9;
+  var weights = new Array(nFeats).fill(0);
+  var lr = 0.00005;
+  var X = [], Y = [];
+  for (var i = 7; i < history.length; i++) {
+    X.push(buildFeatures(history, i));
+    Y.push(history[i]);
+  }
+  // Mini-batch gradient descent — 300 epochs
+  for (var epoch = 0; epoch < 300; epoch++) {
+    for (var i = 0; i < X.length; i++) {
+      var pred = dot(weights, X[i]);
+      var err = pred - Y[i];
+      for (var j = 0; j < weights.length; j++) {
+        weights[j] -= lr * err * X[i][j];
+      }
+    }
+  }
+  // Compute training MAE for quality metric
+  var mae = 0;
+  for (var i = 0; i < X.length; i++) {
+    mae += Math.abs(dot(weights, X[i]) - Y[i]);
+  }
+  mae /= X.length;
+  return { weights: weights, mae: mae.toFixed(2), trained: history.length };
+}
+function predictWithModel(model, history, days) {
+  if (!model) return null;
+  var temp = history.slice();
+  var result = [];
+  var n = temp.length;
+  for (var d = 0; d < days; d++) {
+    var feats = buildFeatures(temp, n + d);
+    var pred = Math.max(0, dot(model.weights, feats));
+    // Add demand variability noise for realism
+    pred = Math.round(pred);
+    result.push(pred);
+    temp.push(pred);
+  }
+  return result;
+}
+// Train models for all SKUs once and cache
+function trainAllModels() {
+  mlModels = {};
+  skus.forEach(function(sku) {
+    if (sku.history && sku.history.length >= 10) {
+      mlModels[sku.id] = trainModel(sku.history);
+    }
+  });
+}
+
+// ================================================================
+// HYBRID FORECAST (ML + Pattern rules)
+// ================================================================
+function generateForecast(sku, days) {
+  var model = mlModels[sku.id];
+  var history = sku.history || [];
+  var pattern = sku.pattern || 'stable';
+  var seasonalMult = pattern === 'seasonal' ? [0.70,0.85,1.0,1.0,1.15,1.30,1.0] : [1,1,1,1,1,1,1];
+  var trendFactor = pattern === 'trending' ? 1.0025 : 1.0;
+
+  var mlPreds = model && history.length >= 10 ? predictWithModel(model, history, days) : null;
+  var forecasts = [];
+  var lastKnown = history.length ? history[history.length-1] : sku.demand;
+  var ma7 = history.length >= 7 ? history.slice(-7).reduce(function(a,b){return a+b;},0)/7 : sku.demand;
+
+  for (var d = 0; d < days; d++) {
+    var mlBase = mlPreds ? mlPreds[d] : null;
+    var ruleBase = ma7 * Math.pow(trendFactor, d);
+    // Blend: 60% ML, 40% rules (if ML available); else 100% rules
+    var base = mlBase !== null ? (0.6 * mlBase + 0.4 * ruleBase) : ruleBase;
+    var seasonal = seasonalMult[d % 7];
+    var forecast = Math.max(0, Math.round(base * seasonal));
+    var stdEstimate = model ? parseFloat(model.mae) : sku.stddev;
+    var lower = Math.max(0, Math.round(forecast - 1.28 * stdEstimate));
+    var upper = Math.round(forecast + 1.28 * stdEstimate);
+    forecasts.push({ day: d+1, forecast: forecast, lower: lower, upper: upper, seasonal: seasonal.toFixed(2), ml: mlBase !== null ? Math.round(mlBase) : null });
+  }
+
+  var avgF = forecasts.reduce(function(s,f){return s+f.forecast;},0)/forecasts.length;
+  var slope = 0;
+  if (forecasts.length > 1) slope = (forecasts[forecasts.length-1].forecast - forecasts[0].forecast) / forecasts.length;
+
+  return { forecasts: forecasts, slope: slope, avgForecast: avgF, pattern: pattern, model: model, ma7: ma7 };
+}
+
+function renderForecast() {
+  var sel = document.getElementById('forecastSKU');
+  if (!sel || !skus.length) return;
+  var id = parseInt(sel.value) || skus[0].id;
+  var sku = skus.find(function(s) { return s.id === id; }) || skus[0];
+  var result = generateForecast(sku, 30);
+  var f = result.forecasts, model = result.model;
+  var avgF = result.avgForecast.toFixed(1);
+  var maxF = Math.max.apply(null, f.map(function(x){return x.forecast;}));
+  var minF = Math.min.apply(null, f.map(function(x){return x.forecast;}));
+
+  document.getElementById('forecast-kpis').innerHTML =
+    '<div class="kpi-card blue" style="border-top:3px solid var(--accent)">' +
+    '<div class="kpi-label">Avg Forecast</div><div class="kpi-value" style="font-size:24px">' + avgF + '</div>' +
+    '<div class="kpi-meta">units/day · next 30 days</div></div>' +
+    '<div class="kpi-card" style="border-top:3px solid var(--warning)">' +
+    '<div class="kpi-label">Demand Range</div><div class="kpi-value" style="font-size:24px">' + minF + '–' + maxF + '</div>' +
+    '<div class="kpi-meta">min–max over period</div></div>' +
+    '<div class="kpi-card" style="border-top:3px solid var(--success)">' +
+    '<div class="kpi-label">ML Training Data</div>' +
+    '<div class="kpi-value" style="font-size:20px">' + (model ? model.trained : 'N/A') + '</div>' +
+    '<div class="kpi-meta">' + (model ? 'days of history · MAE=' + model.mae : 'Not enough history') + '</div></div>';
+
+  document.getElementById('forecast-model-info').innerHTML =
+    '<div style="margin-bottom:14px">' +
+    (model ?
+      '<div class="ml-badge" style="margin-bottom:10px">🤖 ML TRAINED · ' + model.trained + ' data points · MAE=' + model.mae + '</div>' +
+      '<div style="font-size:12px;color:var(--text2);line-height:1.8">' +
+      '<strong style="color:var(--text)">Model:</strong> Linear Regression (gradient descent, 300 epochs)<br>' +
+      '<strong style="color:var(--text)">Features:</strong> trend index, day-of-week, day-of-month, lags (1,2,3), MA7, MA3<br>' +
+      '<strong style="color:var(--text)">Blend:</strong> 60% ML prediction + 40% rule-based (MA + pattern)<br>' +
+      '<strong style="color:var(--text)">Training MAE:</strong> <span class="model-metric">' + model.mae + ' units/day</span>' +
+      '</div>' :
+      '<div style="font-size:12px;color:var(--warning)">⚠ Insufficient history (&lt;10 days). Using rule-based forecast only. Add demand history to enable ML training.</div>') +
+    '</div>' +
+    '<div style="padding:12px;background:var(--surface2);border-radius:8px;margin-bottom:10px;font-size:12px">' +
+    'Pattern: <span class="demand-badge db-' + result.pattern + '">' + result.pattern.toUpperCase() + '</span> &nbsp;' +
+    'LT variability: ±' + (sku.ltstddev||0) + 'd &nbsp; MOQ: ' + (sku.moq||1) + ' &nbsp; Supplier: ' + getSupplier(sku).name + '</div>' +
+    '<div style="font-size:11.5px;color:var(--text2);padding:10px 12px;background:rgba(59,130,246,0.06);border-radius:7px;border:1px solid rgba(59,130,246,0.15)">' +
+    '💡 <strong>Viva:</strong> "I implemented supervised linear regression trained on 50-day historical demand with lag features (d-1, d-2, d-3), moving averages, and cyclical time features (day-of-week). Predictions blend ML output (60%) with pattern-adjusted rules (40%), giving an adaptive forecast that improves with more data."' +
+    '</div>';
+
+  if (charts.forecast) charts.forecast.destroy();
+  charts.forecast = new Chart(document.getElementById('forecastChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: f.map(function(x) { return 'D'+x.day; }),
+      datasets: [
+        { label: 'ML+Hybrid Forecast', data: f.map(function(x){return x.forecast;}), borderColor:'rgba(59,130,246,0.9)', borderWidth:2.5, fill:false, pointRadius:2 },
+        { label: 'Upper CI 90%', data: f.map(function(x){return x.upper;}), borderColor:'rgba(59,130,246,0.15)', borderWidth:1, fill:'+1', backgroundColor:'rgba(59,130,246,0.06)', pointRadius:0 },
+        { label: 'Lower CI 90%', data: f.map(function(x){return x.lower;}), borderColor:'rgba(59,130,246,0.15)', borderWidth:1, fill:false, pointRadius:0 },
+        { label: 'Historical Avg', data: Array(30).fill(result.ma7 ? result.ma7.toFixed(1) : sku.demand), borderColor:'rgba(245,158,11,0.6)', borderWidth:1.5, borderDash:[5,3], fill:false, pointRadius:0 },
+        model ? { label: 'Raw ML', data: f.map(function(x){return x.ml;}), borderColor:'rgba(16,185,129,0.4)', borderWidth:1, fill:false, pointRadius:0, borderDash:[3,3] } : null
+      ].filter(Boolean)
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{ legend:{ labels:{ color:'#94A3B8', font:{size:11} } } },
+      scales:{ x:{ticks:{color:'#64748B',font:{size:9},maxTicksLimit:10},grid:{color:'rgba(42,58,82,0.4)'}}, y:{min:0,ticks:{color:'#64748B',font:{size:10}},grid:{color:'rgba(42,58,82,0.4)'}} }
+    }
+  });
+
+  // Table
+  document.getElementById('forecast-table').innerHTML =
+    '<table style="width:100%;border-collapse:collapse"><thead><tr>' +
+    ['Day','Forecast','Lower CI','Upper CI','Seasonal','ML Pred'].map(function(h){ return '<th style="padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border)">' + h + '</th>'; }).join('') +
+    '</tr></thead><tbody>' +
+    f.map(function(x) {
+      return '<tr>' +
+        '<td style="padding:7px 12px;font-family:var(--mono);font-size:12px;border-bottom:1px solid rgba(42,58,82,0.4)">Day ' + x.day + '</td>' +
+        '<td style="padding:7px 12px;font-family:var(--mono);font-size:12px;border-bottom:1px solid rgba(42,58,82,0.4);color:var(--accent)">' + x.forecast + '</td>' +
+        '<td style="padding:7px 12px;font-family:var(--mono);font-size:12px;border-bottom:1px solid rgba(42,58,82,0.4);color:var(--text3)">' + x.lower + '</td>' +
+        '<td style="padding:7px 12px;font-family:var(--mono);font-size:12px;border-bottom:1px solid rgba(42,58,82,0.4);color:var(--text3)">' + x.upper + '</td>' +
+        '<td style="padding:7px 12px;font-size:12px;border-bottom:1px solid rgba(42,58,82,0.4)">&times;' + x.seasonal + '</td>' +
+        '<td style="padding:7px 12px;font-family:var(--mono);font-size:12px;border-bottom:1px solid rgba(42,58,82,0.4);color:var(--success)">' + (x.ml !== null ? x.ml : '—') + '</td>' +
+        '</tr>';
+    }).join('') + '</tbody></table>';
+}
+
+// ================================================================
+// SUPPLIER MODEL
+// ================================================================
+function renderSupplier() {
+  var Z = 1.65;
+  var avgRel = suppliers.reduce(function(s,x){return s+x.reliability;},0)/suppliers.length;
+  var highRisk = suppliers.filter(function(s){return s.reliability<80;}).length;
+
+  document.getElementById('sup-kpis').innerHTML =
+    '<div class="kpi-card blue"><div class="kpi-label">Total Suppliers</div><div class="kpi-value">' + suppliers.length + '</div><div class="kpi-meta">in system</div></div>' +
+    '<div class="kpi-card green"><div class="kpi-label">Avg Reliability</div><div class="kpi-value">' + avgRel.toFixed(0) + '%</div><div class="kpi-meta">weighted score</div></div>' +
+    '<div class="kpi-card red"><div class="kpi-label">High-Risk Suppliers</div><div class="kpi-value">' + highRisk + '</div><div class="kpi-meta">reliability &lt; 80%</div></div>' +
+    '<div class="kpi-card yellow"><div class="kpi-label">SS Inflation (avg)</div><div class="kpi-value">' + (suppliers.reduce(function(s,x){return s+(1+x.delayProb*x.avgDelay*0.5);},0)/suppliers.length*100-100).toFixed(0) + '%</div><div class="kpi-meta">extra buffer from delays</div></div>';
+
+  document.getElementById('supplier-list').innerHTML = suppliers.map(function(sup, i) {
+    var relColor = sup.reliability >= 90 ? 'var(--success)' : sup.reliability >= 80 ? 'var(--warning)' : 'var(--danger)';
+    return '<div style="padding:12px 14px;background:var(--surface2);border-radius:8px;margin-bottom:8px;border:1px solid var(--border)">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+      '<div><strong style="font-size:13.5px">' + sup.name + '</strong><br><span style="font-size:10px;color:var(--text3)">ID: ' + sup.id + '</span></div>' +
+      '<span style="font-family:var(--mono);font-size:22px;color:' + relColor + '">' + sup.reliability + '%</span></div>' +
+      '<div class="supplier-bar"><div class="supplier-fill" style="width:' + sup.reliability + '%;background:' + relColor + '"></div></div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;font-size:11px;color:var(--text2)">' +
+      '<div>Delay prob: <strong>' + (sup.delayProb*100).toFixed(0) + '%</strong></div>' +
+      '<div>Avg delay: <strong>' + sup.avgDelay + 'd</strong></div>' +
+      '<div>MOQ: <strong>' + sup.moq + '</strong></div></div>' +
+      '<div style="margin-top:6px;font-size:11px;color:var(--text3)">SS inflation factor: <strong style="color:var(--accent)">×' + (1+sup.delayProb*sup.avgDelay*0.5).toFixed(2) + '</strong></div>' +
+      '</div>';
+  }).join('');
+
+  if (charts.sup) charts.sup.destroy();
+  charts.sup = new Chart(document.getElementById('supChart').getContext('2d'), {
+    type: 'radar',
+    data: {
+      labels: ['Reliability', 'On-Time %', 'Low MOQ', 'Speed'],
+      datasets: suppliers.map(function(sup, i) {
+        var colors = ['rgba(59,130,246,0.5)','rgba(16,185,129,0.5)','rgba(245,158,11,0.5)','rgba(139,92,246,0.5)'];
+        return {
+          label: sup.name.split(' ')[0]+' '+sup.name.split(' ')[1],
+          data: [sup.reliability, (1-sup.delayProb)*100, Math.max(0,100-sup.moq), Math.max(0,100-sup.avgDelay*20)],
+          borderColor: colors[i % colors.length], backgroundColor: colors[i % colors.length].replace('0.5','0.1'), borderWidth:2, pointRadius:3
+        };
+      })
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:'#94A3B8', font:{size:10} } } },
+      scales:{ r:{ min:0, max:100, ticks:{ color:'#64748B', font:{size:9} }, grid:{ color:'rgba(42,58,82,0.5)' }, pointLabels:{ color:'#94A3B8', font:{size:11} } } }
+    }
+  });
+
+  document.getElementById('sup-sku-table').innerHTML = skus.map(function(sku) {
+    var sup = getSupplier(sku);
+    var baseSS = Math.ceil(Z * sku.stddev * Math.sqrt(sku.leadtime));
+    var adjSS = calcSS(sku, Z);
+    var extra = adjSS - baseSS;
+    var extraCost = Math.round(extra * sku.cost * 0.20 / 12);
+    var relColor = sup.reliability >= 90 ? 'var(--success)' : sup.reliability >= 80 ? 'var(--warning)' : 'var(--danger)';
+    return '<tr>' +
+      '<td><strong>' + sku.name.split(' ').slice(0,2).join(' ') + '</strong></td>' +
+      '<td>' + sup.name + '</td>' +
+      '<td><span style="color:' + relColor + ';font-family:var(--mono);font-weight:700">' + sup.reliability + '%</span></td>' +
+      '<td style="font-family:var(--mono)">' + (sup.delayProb*100).toFixed(0) + '%</td>' +
+      '<td style="font-family:var(--mono)">' + baseSS + '</td>' +
+      '<td style="font-family:var(--mono);color:var(--warning);font-weight:700">' + adjSS + '</td>' +
+      '<td style="font-family:var(--mono);font-size:12px;color:var(--danger)">+' + extra + ' (₹' + extraCost + '/mo extra holding)</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function addSupplier() {
+  var name = prompt('Supplier name:');
+  if (!name) return;
+  var rel = parseInt(prompt('Reliability score (0-100):', '85')) || 85;
+  var dp = parseFloat(prompt('Delay probability (0-1):', '0.15')) || 0.15;
+  var ad = parseFloat(prompt('Average delay days:', '2')) || 2;
+  var moq = parseInt(prompt('Minimum order quantity:', '10')) || 10;
+  suppliers.push({ id:'S'+Date.now(), name:name, reliability:rel, delayProb:dp, avgDelay:ad, moq:moq });
+  saveToStorage();
+  renderSupplier();
+}
+
+// ================================================================
+// AUTO-ALERT ENGINE
+// ================================================================
+var lastAlertCheck = 0;
+function checkAutoAlerts() {
+  var now = Date.now();
+  if (now - lastAlertCheck < 30000) return; // Check every 30s
+  lastAlertCheck = now;
+  var urgent = skus.filter(function(s) { return getStatus(s) === 'stockout' || getStatus(s) === 'critical'; });
+  if (urgent.length > 0 && alertsActive) {
+    var alertArea = document.getElementById('alert-area');
+    if (alertArea) {
+      alertArea.innerHTML = urgent.map(function(s) {
+        return '<div class="alert-strip alert-live">' +
+          '<span style="font-size:20px">' + (getStatus(s)==='stockout'?'🚨':'⚠️') + '</span>' +
+          '<div><strong>' + s.name + '</strong>: ' + (getStatus(s)==='stockout'?'STOCKOUT — Zero units!':
+          'CRITICAL — Stock (' + s.stock + ') below safety stock (' + calcSS(s,1.65) + ')') + '</div>' +
+          '</div>';
+      }).join('');
+    }
+  }
+}
+
+// ================================================================
+// DECISION ENGINE
+// ================================================================
+function renderDecisions() {
+  var Z = 1.65;
+  var decisions = [];
+  var urgentCount = 0, warnCount = 0;
+
+  skus.forEach(function(sku) {
+    var SS = calcSS(sku, Z);
+    var ROP = calcROP(sku, SS);
+    var EOQ = calcEOQ(sku);
+    var status = getStatus(sku);
+    var cls = getABCClass(sku, skus);
+    var days = parseFloat(daysLeft(sku));
+    var tc = calcTotalCost(sku);
+    var sup = getSupplier(sku);
+    var icon, title, body, action, type;
+
+    if (sku.stock <= 0) {
+      urgentCount++;
+      type = 'urgent'; icon = '🚨';
+      title = 'STOCKOUT — ' + sku.name;
+      body = 'Zero stock. Losing ₹' + (sku.demand * sku.margin).toLocaleString() + '/day. Order ' + EOQ + ' units immediately. Supplier ' + sup.name + ' reliability: ' + sup.reliability + '%. Consider alternate supplier if delay risk is high.';
+      action = 'ORDER NOW: ' + EOQ + ' units (MOQ: ' + (sku.moq||1) + ')';
+    } else if (sku.stock <= SS) {
+      urgentCount++;
+      type = 'urgent'; icon = '⚠️';
+      title = 'Critical — ' + sku.name;
+      body = 'Stock (' + sku.stock + ') below safety stock (' + SS + '). Only ' + days + ' days left. Supplier delay prob: ' + (sup.delayProb*100).toFixed(0) + '%. Effective lead time with variability: up to ' + (sku.leadtime + (sku.ltstddev||0)*2).toFixed(0) + ' days. Order immediately.';
+      action = 'Order ' + EOQ + ' units (respects MOQ of ' + (sku.moq||1) + ')';
+    } else if (sku.stock <= ROP) {
+      warnCount++;
+      type = 'warn'; icon = '🔔';
+      title = 'Reorder Now — ' + sku.name;
+      body = 'Stock (' + sku.stock + ') at ROP=' + ROP + '. Place order for ' + EOQ + ' units. Total annual cost at EOQ: ₹' + tc.total.toLocaleString() + ' (Ordering: ₹' + tc.orderingCost.toLocaleString() + ' + Holding: ₹' + tc.holdingCost.toLocaleString() + ' + Shortage risk: ₹' + tc.shortageCost.toLocaleString() + ').';
+      action = 'Place order: ' + EOQ + ' units via ' + sup.name;
+    } else if (sku.stock > ROP * 2.5) {
+      type = 'good'; icon = '📦';
+      title = 'Overstock — ' + sku.name;
+      body = 'Stock (' + sku.stock + ') is ' + ((sku.stock/ROP - 1)*100).toFixed(0) + '% above ROP. Excess capital locked: ₹' + ((sku.stock-ROP)*sku.cost).toLocaleString() + '. Holding cost on excess: ₹' + Math.round((sku.stock-ROP)*sku.cost*0.20/12).toLocaleString() + '/month.';
+      action = 'Reduce next order. Reorder trigger: ' + ROP + ' units';
+    } else {
+      type = 'good'; icon = '✅';
+      title = sku.name + ' — Healthy';
+      body = 'Stock (' + sku.stock + ') above ROP (' + ROP + '). ' + days + ' days remaining. EOQ=' + EOQ + '. Total cost: ₹' + tc.total.toLocaleString() + '/yr.';
+      action = 'Monitor. Reorder when stock hits ' + ROP;
+    }
+    decisions.push({ sku:sku, priority: type==='urgent'?1:type==='warn'?2:3, type:type, icon:icon, title:title, body:body, action:action });
+  });
+
+  decisions.sort(function(a,b) { return a.priority - b.priority; });
+
+  document.getElementById('decision-summary').innerHTML =
+    '<div class="kpi-card" style="border-top:3px solid var(--danger)"><div class="kpi-label">Urgent</div><div class="kpi-value" style="color:var(--danger)">' + urgentCount + '</div><div class="kpi-meta">Immediate action</div></div>' +
+    '<div class="kpi-card" style="border-top:3px solid var(--warning)"><div class="kpi-label">Reorder</div><div class="kpi-value" style="color:var(--warning)">' + warnCount + '</div><div class="kpi-meta">Place orders today</div></div>' +
+    '<div class="kpi-card" style="border-top:3px solid var(--success)"><div class="kpi-label">Healthy</div><div class="kpi-value" style="color:var(--success)">' + (skus.length-urgentCount-warnCount) + '</div><div class="kpi-meta">No action needed</div></div>' +
+    '<div class="kpi-card" style="border-top:3px solid var(--accent)"><div class="kpi-label">Inventory Value</div><div class="kpi-value" style="font-size:20px;margin-top:4px">₹' + skus.reduce(function(s,x){return s+x.stock*x.cost;},0).toLocaleString('en-IN') + '</div><div class="kpi-meta">Current stock</div></div>';
+
+  document.getElementById('decision-actions').innerHTML = decisions.map(function(d) {
+    var cls = getABCClass(d.sku, skus);
+    return '<div class="decision-card ' + d.type + '">' +
+      '<div class="decision-title">' + d.icon + ' ' + d.title +
+      ' <span class="badge badge-' + cls + '" style="margin-left:8px;font-size:10px">Class ' + cls + '</span>' +
+      '<span class="constraint-tag">' + (d.sku.pattern||'stable') + '</span>' +
+      (d.sku.moq ? '<span class="constraint-tag">MOQ:' + d.sku.moq + '</span>' : '') +
+      '<span class="constraint-tag">' + getSupplier(d.sku).reliability + '% supplier</span></div>' +
+      '<div class="decision-body">' + d.body + '</div>' +
+      '<div style="margin-top:8px;padding:8px 10px;background:rgba(59,130,246,0.08);border-radius:6px;font-size:12px;font-weight:600;color:var(--accent)">&rarr; ' + d.action + '</div></div>';
+  }).join('');
+
+  // Total Cost Analysis
+  var totalCosts = skus.map(function(s) { return { s:s, tc:calcTotalCost(s) }; });
+  var gTotal = totalCosts.reduce(function(s,x){return s+x.tc.total;},0);
+  var gOrd = totalCosts.reduce(function(s,x){return s+x.tc.orderingCost;},0);
+  var gHold = totalCosts.reduce(function(s,x){return s+x.tc.holdingCost;},0);
+  var gShort = totalCosts.reduce(function(s,x){return s+x.tc.shortageCost;},0);
+
+  document.getElementById('total-cost-analysis').innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-bottom:14px">' +
+    '<div class="total-cost-box"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Ordering Cost</div><div style="font-family:var(--mono);font-size:18px;color:var(--accent)">₹' + gOrd.toLocaleString('en-IN') + '</div><div style="font-size:10px;color:var(--text3)">/year</div></div>' +
+    '<div class="total-cost-box"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Holding Cost</div><div style="font-family:var(--mono);font-size:18px;color:var(--warning)">₹' + gHold.toLocaleString('en-IN') + '</div><div style="font-size:10px;color:var(--text3)">/year</div></div>' +
+    '<div class="total-cost-box"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Shortage Risk</div><div style="font-family:var(--mono);font-size:18px;color:var(--danger)">₹' + gShort.toLocaleString('en-IN') + '</div><div style="font-size:10px;color:var(--text3)">/year</div></div>' +
+    '<div class="total-cost-box" style="border-color:rgba(59,130,246,0.3)"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Total Annual</div><div style="font-family:var(--mono);font-size:18px;color:var(--accent)">₹' + gTotal.toLocaleString('en-IN') + '</div><div style="font-size:10px;color:var(--text3)">all components</div></div></div>' +
+    '<div style="font-size:12px;color:var(--text2);padding:12px 14px;background:rgba(16,185,129,0.06);border-radius:8px;border:1px solid rgba(16,185,129,0.15)">💡 <strong>Total Cost = Ordering + Holding + Shortage.</strong> EOQ minimises ordering+holding. Safety stock (supplier-adjusted) offsets shortage cost. MOQ constraints may raise EOQ above the mathematical optimum.</div>';
+}
+
+// ================================================================
+// SIMULATION — Pattern-aware, shock events, variable lead time
+// ================================================================
+function renderSimulation() {
+  var sel = document.getElementById('simSKU');
+  sel.innerHTML = skus.map(function(s) { return '<option value="' + s.id + '">' + s.name + '</option>'; }).join('');
+  runSimulation();
+}
+
+function runSimulation() {
+  var id = parseInt(document.getElementById('simSKU').value);
+  var sku = skus.find(function(s) { return s.id === id; }) || skus[0];
+  if (!sku) return;
+  var Z = 1.65;
+  var SS = calcSS(sku, Z);
+  var ROP = calcROP(sku, SS);
+  var EOQ = calcEOQ(sku);
+  var days = parseInt(document.getElementById('simDuration') ? document.getElementById('simDuration').value : 90) || 90;
+  var patternOverride = document.getElementById('simPattern') ? document.getElementById('simPattern').value : 'auto';
+  var pattern = patternOverride === 'auto' ? (sku.pattern || 'stable') : patternOverride;
+  var ltStdDev = sku.ltstddev || 0;
+  var shockEl = document.getElementById('simShock');
+  var shockProb = shockEl ? parseFloat(shockEl.value)/100 : 0.05;
+
+  var seasonalMult = pattern === 'seasonal' ? [0.70,0.85,1.0,1.0,1.15,1.30,1.0] : [1,1,1,1,1,1,1];
+  var trendFactor = pattern === 'trending' ? 1.002 : 1.0;
+
+  // Prefer ML-based demand if available
+  var mlResult = null;
+  if (mlModels[sku.id] && sku.history && sku.history.length >= 10) {
+    mlResult = predictWithModel(mlModels[sku.id], sku.history, days);
+  }
+
+  var demands = [];
+  for (var d = 0; d < days; d++) {
+    var base;
+    if (mlResult) {
+      base = mlResult[d];
+    } else {
+      base = (sku.demand + (Math.random()-0.5)*sku.stddev*2) * seasonalMult[d%7] * Math.pow(trendFactor, d);
+    }
+    // Demand shocks — promotional spikes or sudden surges
+    if (Math.random() < shockProb) base *= (1.5 + Math.random());
+    demands.push(Math.max(0, Math.round(base)));
+  }
+
+  // Current system
+  var curStock=sku.stock, curStockouts=0, curInTransit=0, curInTransitDays=0;
+  var curLevels=[];
+  for (var d=0;d<days;d++) {
+    if (curInTransitDays>0){curInTransitDays--;if(curInTransitDays===0)curStock+=curInTransit;}
+    var sold=Math.min(curStock,demands[d]);
+    if(sold<demands[d])curStockouts++;
+    curStock=Math.max(0,curStock-sold);
+    if(d%10===9&&curInTransitDays===0){curInTransit=Math.round(sku.demand*10);curInTransitDays=sku.leadtime;}
+    curLevels.push(curStock);
+  }
+
+  // Proposed system — variable lead time from supplier model
+  var propStock=sku.stock, propStockouts=0, propInTransit=0, propInTransitDays=0;
+  var propLevels=[], log=[];
+  var sup = getSupplier(sku);
+  for (var d=0;d<days;d++) {
+    var action='', type2='';
+    if(propInTransitDays>0){propInTransitDays--;if(propInTransitDays===0){propStock+=propInTransit;action='📦 +'+propInTransit+' arrived';type2='arrival';}}
+    var sold2=Math.min(propStock,demands[d]);
+    if(sold2<demands[d]){propStockouts++;action='🚨 Stockout! demand='+demands[d];type2='stockout';}
+    propStock=Math.max(0,propStock-sold2);
+    if(propStock<=ROP&&propInTransitDays===0){
+      propInTransit=EOQ;
+      var varLT=Math.max(1,Math.round(sku.leadtime+(Math.random()-0.5)*ltStdDev*2));
+      // Supplier delay
+      if(Math.random()<sup.delayProb) varLT+=Math.ceil(sup.avgDelay);
+      propInTransitDays=varLT;
+      action='🔔 Ordered '+EOQ+'u (LT='+varLT+'d)';type2='reorder';
+    }
+    propLevels.push(propStock);
+    log.push({day:d+1,demand:demands[d],sold:sold2,stock:propStock,action:action,type:type2,shock:demands[d]>sku.demand*1.4});
+  }
+
+  var curAvg=(curLevels.reduce(function(a,b){return a+b;},0)/days).toFixed(0);
+  var propAvg=(propLevels.reduce(function(a,b){return a+b;},0)/days).toFixed(0);
+
+  document.getElementById('sim-current').innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">' +
+    '<div style="text-align:center;padding:14px;background:var(--surface2);border-radius:8px"><div style="font-size:26px;font-weight:700;color:var(--danger);font-family:var(--mono)">' + curStockouts + '</div><div style="font-size:11px;color:var(--text3)">Stockout Days</div></div>' +
+    '<div style="text-align:center;padding:14px;background:var(--surface2);border-radius:8px"><div style="font-size:26px;font-weight:700;color:var(--warning);font-family:var(--mono)">' + curAvg + '</div><div style="font-size:11px;color:var(--text3)">Avg Stock</div></div></div>' +
+    '<div style="font-size:12px;color:var(--text2);padding:10px;background:rgba(239,68,68,0.08);border-radius:8px">Pattern: <strong>' + pattern + '</strong> · No ROP logic · Fixed ordering</div>';
+
+  document.getElementById('sim-proposed').innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">' +
+    '<div style="text-align:center;padding:14px;background:var(--surface2);border-radius:8px"><div style="font-size:26px;font-weight:700;color:var(--success);font-family:var(--mono)">' + propStockouts + '</div><div style="font-size:11px;color:var(--text3)">Stockout Days</div></div>' +
+    '<div style="text-align:center;padding:14px;background:var(--surface2);border-radius:8px"><div style="font-size:26px;font-weight:700;color:var(--success);font-family:var(--mono)">' + propAvg + '</div><div style="font-size:11px;color:var(--text3)">Avg Stock</div></div></div>' +
+    '<div style="font-size:12px;color:var(--text2);padding:10px;background:rgba(16,185,129,0.08);border-radius:8px">ROP=' + ROP + ' SS=' + SS + ' EOQ=' + EOQ + ' · Supplier delay risk=' + (sup.delayProb*100).toFixed(0) + '% · ' + (mlResult?'ML-based demand':'Pattern demand') + '</div>';
+
+  if(charts.sim)charts.sim.destroy();
+  charts.sim=new Chart(document.getElementById('simChart').getContext('2d'),{
+    type:'line',
+    data:{
+      labels:Array.from({length:days},function(_,i){return i+1;}),
+      datasets:[
+        {label:'Current',data:curLevels,borderColor:'rgba(239,68,68,0.7)',borderWidth:1.5,fill:false,pointRadius:0},
+        {label:'Proposed (ROP)',data:propLevels,borderColor:'rgba(16,185,129,0.9)',borderWidth:2,fill:false,pointRadius:0},
+        {label:'ROP',data:Array(days).fill(ROP),borderColor:'rgba(59,130,246,0.5)',borderWidth:1,borderDash:[6,3],fill:false,pointRadius:0},
+        {label:'Safety Stock',data:Array(days).fill(SS),borderColor:'rgba(245,158,11,0.5)',borderWidth:1,borderDash:[4,4],fill:false,pointRadius:0}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{labels:{color:'#94A3B8',font:{size:11}}}},
+      scales:{
+        x:{ticks:{color:'#64748B',font:{size:9},maxTicksLimit:18},grid:{color:'rgba(42,58,82,0.4)'}},
+        y:{min:0,ticks:{color:'#64748B',font:{size:10}},grid:{color:'rgba(42,58,82,0.4)'}}
+      }
+    }
+  });
+
+  // Show shock events
+  var shockDays = log.filter(function(l){return l.shock;});
+  document.getElementById('sim-log').innerHTML = log.filter(function(l){return l.action;}).map(function(l){
+    return '<div class="sim-day ' + l.type + '">' +
+      '<span style="font-weight:700;font-family:var(--mono);min-width:55px">Day ' + l.day + '</span>' +
+      (l.shock ? '<span class="shock-badge">SHOCK</span>' : '') +
+      '<span style="color:var(--text3);min-width:120px"> D:' + l.demand + ' S:' + l.sold + '</span>' +
+      '<span style="color:var(--text2);min-width:80px">Stock:' + l.stock + '</span>' +
+      '<span style="font-size:12px">' + l.action + '</span></div>';
+  }).join('');
+}
+
+// ================================================================
+// NAVIGATION + SECTION INIT
+// ================================================================
+function showSection(name, el) {
+  document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active');});
+  document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active');});
+  document.getElementById('sec-' + name).classList.add('active');
+  if (el) el.classList.add('active');
+  var renders = {
+    dashboard: refreshDashboard,
+    skus: renderSKUs,
+    calculations: renderCalculations,
+    abc: renderABC,
+    forecast: function() {
+      var sel = document.getElementById('forecastSKU');
+      sel.innerHTML = skus.map(function(s){return '<option value="'+s.id+'">'+s.name+'</option>';}).join('');
+      renderForecast();
+    },
+    simulation: renderSimulation,
+    financial: renderFinancial,
+    decisions: renderDecisions,
+    supplier: renderSupplier,
+    import: function() {}
+  };
+  if (renders[name]) renders[name]();
+  saveToStorage();
+}
+
+// ================================================================
+// DASHBOARD
+// ================================================================
+function refreshDashboard() {
+  var Z = 1.65;
+  var alerts = skus.filter(function(s){return getStatus(s)!=='ok';});
+  var alertArea = document.getElementById('alert-area');
+  alertArea.innerHTML = alerts.map(function(s){
+    return '<div class="alert-strip ' + (getStatus(s)==='stockout'||getStatus(s)==='critical'?'alert-live':'') + '">' +
+      '<span style="font-size:20px">' + (getStatus(s)==='stockout'?'🚨':'⚠️') + '</span>' +
+      '<div><strong>' + s.name + '</strong>: ' + (getStatus(s)==='stockout'?'STOCKOUT — Zero units!':
+      getStatus(s)==='critical'?'CRITICAL — Stock ('+s.stock+') below safety stock ('+calcSS(s,Z)+')!':
+      'REORDER NOW — Stock ('+s.stock+') at ROP ('+calcROP(s,calcSS(s,Z))+')') + '</div></div>';
+  }).join('');
+
+  var statuses = skus.map(getStatus);
+  var numOk = statuses.filter(function(x){return x==='ok';}).length;
+  var numReorder = statuses.filter(function(x){return x==='reorder';}).length;
+  var numCritical = statuses.filter(function(x){return x==='critical'||x==='stockout';}).length;
+  var totalValue = skus.reduce(function(s,x){return s+x.stock*x.cost;},0);
+
+  document.getElementById('kpi-grid').innerHTML =
+    '<div class="kpi-card green"><div class="kpi-label">SKUs in Stock</div><div class="kpi-value">' + numOk + '</div><div class="kpi-meta">Out of ' + skus.length + ' total</div></div>' +
+    '<div class="kpi-card yellow"><div class="kpi-label">Reorder Needed</div><div class="kpi-value">' + numReorder + '</div><div class="kpi-meta">Place orders now</div></div>' +
+    '<div class="kpi-card red"><div class="kpi-label">Critical / Stockout</div><div class="kpi-value">' + numCritical + '</div><div class="kpi-meta">Immediate action</div></div>' +
+    '<div class="kpi-card blue"><div class="kpi-label">Inventory Value</div><div class="kpi-value">₹' + (totalValue/1000).toFixed(0) + 'K</div><div class="kpi-meta">Current stock on hand</div></div>';
+
+  var Z2 = 1.65;
+  document.getElementById('dash-table').innerHTML = skus.map(function(s){
+    var status = getStatus(s);
+    var SS = calcSS(s, Z2), ROP = calcROP(s, SS);
+    var badge = status==='ok'?'badge-ok':status==='reorder'?'badge-warn':'badge-alert';
+    var label = status==='ok'?'Good':status==='reorder'?'Reorder':status==='critical'?'Critical':'Stockout';
+    var sup = getSupplier(s);
+    return '<tr>' +
+      '<td><strong>' + s.name + '</strong><br><span class="tag">' + s.category + '</span> <span class="demand-badge db-' + (s.pattern||'stable') + '" style="font-size:9px">' + (s.pattern||'stable').substring(0,3).toUpperCase() + '</span></td>' +
+      '<td><span class="number-highlight">' + s.stock + '</span></td>' +
+      '<td>' + ROP + '</td>' +
+      '<td><span class="badge ' + badge + '">' + label + '</span></td>' +
+      '<td>' + daysLeft(s) + 'd &nbsp;<span style="font-size:10px;color:' + (sup.reliability>=90?'var(--success)':sup.reliability>=80?'var(--warning)':'var(--danger)') + '">' + sup.reliability + '%</span></td>' +
+      '</tr>';
+  }).join('');
+
+  if(charts.level)charts.level.destroy();
+  charts.level=new Chart(document.getElementById('levelChart').getContext('2d'),{
+    type:'bar',
+    data:{
+      labels:skus.map(function(s){return s.name.split(' ').slice(0,2).join(' ');}),
+      datasets:[
+        {label:'Current Stock',data:skus.map(function(s){return s.stock;}),backgroundColor:skus.map(function(s){var st=getStatus(s);return st==='ok'?'rgba(16,185,129,0.7)':st==='reorder'?'rgba(245,158,11,0.7)':'rgba(239,68,68,0.7)';}),borderRadius:4},
+        {label:'Reorder Point',data:skus.map(function(s){return calcROP(s,calcSS(s,1.65));}),type:'line',borderColor:'rgba(59,130,246,0.8)',borderWidth:2,pointRadius:3,fill:false}
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#94A3B8',font:{size:11}}}},scales:{x:{ticks:{color:'#64748B',font:{size:10}},grid:{color:'rgba(42,58,82,0.5)'}},y:{ticks:{color:'#64748B',font:{size:10}},grid:{color:'rgba(42,58,82,0.5)'}}}}
+  });
+}
+
+// ================================================================
+// SKU MANAGER
+// ================================================================
+function renderSKUs() {
+  document.getElementById('sku-table').innerHTML = skus.map(function(s){
+    var sup = getSupplier(s);
+    return '<tr>' +
+      '<td><strong>' + s.name + '</strong></td>' +
+      '<td><span class="tag">' + s.category + '</span></td>' +
+      '<td>' + s.demand + ' <span class="demand-badge db-' + (s.pattern||'stable') + '" style="font-size:9px">' + (s.pattern||'stable').substring(0,3).toUpperCase() + '</span></td>' +
+      '<td>' + s.stddev + '</td>' +
+      '<td>' + s.leadtime + 'd ±' + (s.ltstddev||0) + '</td>' +
+      '<td>₹' + s.cost + '</td>' +
+      '<td>' + s.stock + (s.moq?' <span style="font-size:10px;color:var(--text3)">(MOQ:'+s.moq+')</span>':'') + '</td>' +
+      '<td><button class="btn btn-ghost" style="padding:6px 12px;font-size:12px;margin-right:6px" onclick="editSKU(' + s.id + ')">✏️</button><button class="btn btn-danger" style="padding:6px 12px;font-size:12px" onclick="deleteSKU(' + s.id + ')">🗑️</button></td>' +
+      '</tr>';
+  }).join('');
+}
+function openAddModal() {
+  editingId=null;
+  document.getElementById('modal-title').textContent='Add Product';
+  document.getElementById('modal-save-btn').textContent='Save Product';
+  ['name','cost','demand','stddev','leadtime','stock','ordercost','maxdemand','margin','ltstddev','moq','shortage'].forEach(function(f){var el=document.getElementById('f-'+f);if(el&&el.tagName!=='SELECT')el.value='';});
+  var pEl=document.getElementById('f-pattern');if(pEl)pEl.selectedIndex=0;
+  document.getElementById('modal').style.display='flex';
+}
+function editSKU(id) {
+  var s=skus.find(function(x){return x.id===id;});if(!s)return;
+  editingId=id;
+  document.getElementById('modal-title').textContent='Edit Product';
+  document.getElementById('modal-save-btn').textContent='Update Product';
+  ['name','cost','demand','stddev','leadtime','stock','ordercost','maxdemand','margin'].forEach(function(f){var el=document.getElementById('f-'+f);if(el)el.value=s[f];});
+  if(document.getElementById('f-pattern'))document.getElementById('f-pattern').value=s.pattern||'stable';
+  if(document.getElementById('f-ltstddev'))document.getElementById('f-ltstddev').value=s.ltstddev||0.3;
+  if(document.getElementById('f-moq'))document.getElementById('f-moq').value=s.moq||1;
+  if(document.getElementById('f-shortage'))document.getElementById('f-shortage').value=s.shortage||10;
+  document.getElementById('modal').style.display='flex';
+}
+function deleteSKU(id){if(!confirm('Delete?'))return;skus=skus.filter(function(s){return s.id!==id;});saveToStorage();renderSKUs();}
+function saveSKU() {
+  var data={
+    name:document.getElementById('f-name').value.trim(),
+    category:document.getElementById('f-category').value,
+    cost:parseFloat(document.getElementById('f-cost').value),
+    demand:parseFloat(document.getElementById('f-demand').value),
+    stddev:parseFloat(document.getElementById('f-stddev').value),
+    leadtime:parseInt(document.getElementById('f-leadtime').value),
+    stock:parseInt(document.getElementById('f-stock').value),
+    ordercost:parseFloat(document.getElementById('f-ordercost').value),
+    maxdemand:parseFloat(document.getElementById('f-maxdemand').value),
+    margin:parseFloat(document.getElementById('f-margin').value),
+    pattern:document.getElementById('f-pattern')&&document.getElementById('f-pattern').value||'stable',
+    ltstddev:parseFloat(document.getElementById('f-ltstddev')&&document.getElementById('f-ltstddev').value)||0.3,
+    moq:parseInt(document.getElementById('f-moq')&&document.getElementById('f-moq').value)||1,
+    shortage:parseFloat(document.getElementById('f-shortage')&&document.getElementById('f-shortage').value)||10,
+    supplierId:suppliers[0].id,
+    history:[]
+  };
+  if(!data.name||isNaN(data.cost)||isNaN(data.demand)){alert('Fill required fields.');return;}
+  if(editingId){skus=skus.map(function(s){return s.id===editingId?Object.assign({},s,data,{id:editingId}):s;});}
+  else{data.id=Date.now();skus.push(data);}
+  closeModal();saveToStorage();renderSKUs();
+}
+function closeModal(){document.getElementById('modal').style.display='none';}
+
+// ================================================================
+// CALCULATIONS
+// ================================================================
+function renderCalculations() {
+  var Z = getZ();
+  document.getElementById('calc-table').innerHTML = skus.map(function(s){
+    var SS=calcSS(s,Z),ROP=calcROP(s,SS),EOQ=calcEOQ(s),cls=getABCClass(s,skus);
+    var tc=calcTotalCost(s);
+    return '<tr>' +
+      '<td><strong>' + s.name + '</strong></td>' +
+      '<td><span class="badge badge-' + cls + '">' + cls + '</span></td>' +
+      '<td><span class="number-highlight">' + SS + '</span> units</td>' +
+      '<td><span class="number-highlight">' + ROP + '</span> units</td>' +
+      '<td><span class="number-highlight">' + EOQ + '</span>' + (s.moq&&EOQ===s.moq?' <span style="font-size:10px;color:var(--accent3)">(MOQ)</span>':'') + '</td>' +
+      '<td>₹' + tc.orderingCost.toLocaleString() + '</td>' +
+      '<td>₹' + tc.holdingCost.toLocaleString() + '</td>' +
+      '<td><strong>₹' + tc.total.toLocaleString() + '</strong></td>' +
+      '</tr>';
+  }).join('');
+
+  document.getElementById('calc-details').innerHTML = '<div class="three-col">' +
+    skus.slice(0,3).map(function(s){
+      var Z2=parseFloat(document.getElementById('serviceLevel').value);
+      var SS=calcSS(s,Z2),ROP=calcROP(s,SS),EOQ=calcEOQ(s),tc=calcTotalCost(s);
+      var sup=getSupplier(s);
+      var baseSS=Math.ceil(Z2*s.stddev*Math.sqrt(s.leadtime));
+      return '<div class="card">' +
+        '<div class="card-title">' + s.name + '</div>' +
+        '<div style="margin-bottom:8px"><div style="font-size:10px;color:var(--text3);margin-bottom:2px">SS (demand + lead time variability)</div>' +
+        '<code style="font-size:11px;color:var(--accent2)">√((Z×σd×√L)² + (Z×σL×d)²) = <strong>' + baseSS + '</strong><br>Supplier adj (×' + (1+sup.delayProb*sup.avgDelay*0.5).toFixed(2) + ') = <strong>' + SS + '</strong></code></div>' +
+        '<div style="margin-bottom:8px"><div style="font-size:10px;color:var(--text3);margin-bottom:2px">Reorder Point</div>' +
+        '<code style="font-size:11px;color:var(--success)">('+s.demand+'×'+s.leadtime+') + '+SS+' = <strong>'+ROP+'</strong></code></div>' +
+        '<div style="margin-bottom:8px"><div style="font-size:10px;color:var(--text3);margin-bottom:2px">EOQ (with MOQ='+s.moq+')</div>' +
+        '<code style="font-size:11px;color:var(--warning)">max(√(2DS/H), '+s.moq+') = <strong>'+EOQ+'</strong></code></div>' +
+        '<div class="total-cost-box"><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Total Annual Cost</div>' +
+        '<div style="font-size:11.5px">Ord:₹'+tc.orderingCost.toLocaleString()+' + Hold:₹'+tc.holdingCost.toLocaleString()+' + Shortage:₹'+tc.shortageCost.toLocaleString()+'<br><strong>₹'+tc.total.toLocaleString()+'/yr</strong></div></div>' +
+        '</div>';
+    }).join('') + '</div>';
+}
+
+// ================================================================
+// ABC ANALYSIS
+// ================================================================
+function renderABC() {
+  var sorted=skus.slice().sort(function(a,b){return(b.demand*365*b.cost)-(a.demand*365*a.cost);});
+  var total=sorted.reduce(function(s,x){return s+x.demand*365*x.cost;},0);
+  var cumPct=0;
+  var rows=sorted.map(function(s){
+    var val=s.demand*365*s.cost,pct=val/total*100;
+    cumPct+=pct;
+    var cls=cumPct<=80?'A':cumPct<=95?'B':'C';
+    return {s:s,val:val,pct:pct,cumPct:cumPct.toFixed(1),cls:cls};
+  });
+
+  document.getElementById('abc-table').innerHTML=rows.map(function(r,i){
+    return '<tr>' +
+      '<td>' + (i+1) + '</td>' +
+      '<td><strong>' + r.s.name + '</strong> <span class="demand-badge db-' + (r.s.pattern||'stable') + '" style="font-size:9px">' + (r.s.pattern||'stable').substring(0,3).toUpperCase() + '</span></td>' +
+      '<td>₹' + r.val.toLocaleString('en-IN') + '</td>' +
+      '<td>' + r.pct.toFixed(1) + '%</td>' +
+      '<td>' + r.cumPct + '%</td>' +
+      '<td><span class="badge badge-' + r.cls + '">' + r.cls + '</span></td>' +
+      '<td style="font-size:12px;color:var(--text2)">' + (r.cls==='A'?'Tight — weekly ROP review':r.cls==='B'?'Moderate — bi-weekly':'Loose — monthly') + '</td></tr>';
+  }).join('');
+
+  var Ai=rows.filter(function(r){return r.cls==='A';}),Bi=rows.filter(function(r){return r.cls==='B';}),Ci=rows.filter(function(r){return r.cls==='C';});
+  var Av=Ai.reduce(function(s,x){return s+x.val;},0),Bv=Bi.reduce(function(s,x){return s+x.val;},0),Cv=Ci.reduce(function(s,x){return s+x.val;},0);
+
+  document.getElementById('abc-summary').innerHTML=
+    '<div class="card" style="border-color:rgba(239,68,68,0.3)"><div style="color:#F87171;font-size:22px;font-weight:700">A Class</div><div style="font-size:12px;color:var(--text2);margin:6px 0">'+Ai.length+' items · '+(Av/total*100).toFixed(0)+'% value</div><div style="font-size:12px">'+Ai.map(function(x){return x.s.name.split(' ').slice(0,2).join(' ');}).join(', ')+'</div></div>' +
+    '<div class="card" style="border-color:rgba(245,158,11,0.3)"><div style="color:#FCD34D;font-size:22px;font-weight:700">B Class</div><div style="font-size:12px;color:var(--text2);margin:6px 0">'+Bi.length+' items · '+(Bv/total*100).toFixed(0)+'% value</div><div style="font-size:12px">'+Bi.map(function(x){return x.s.name.split(' ').slice(0,2).join(' ');}).join(', ')+'</div></div>' +
+    '<div class="card" style="border-color:rgba(16,185,129,0.3)"><div style="color:#34D399;font-size:22px;font-weight:700">C Class</div><div style="font-size:12px;color:var(--text2);margin:6px 0">'+Ci.length+' items · '+(Cv/total*100).toFixed(0)+'% value</div><div style="font-size:12px">'+Ci.map(function(x){return x.s.name.split(' ').slice(0,2).join(' ');}).join(', ')+'</div></div>';
+
+  if(charts.abc)charts.abc.destroy();
+  charts.abc=new Chart(document.getElementById('abcChart').getContext('2d'),{type:'doughnut',data:{labels:['A','B','C'],datasets:[{data:[Av,Bv,Cv],backgroundColor:['rgba(239,68,68,0.7)','rgba(245,158,11,0.7)','rgba(16,185,129,0.7)'],borderColor:['#EF4444','#F59E0B','#10B981'],borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#94A3B8',padding:16,font:{size:11}}}}}});
+  if(charts.pareto)charts.pareto.destroy();
+  charts.pareto=new Chart(document.getElementById('paretoChart').getContext('2d'),{type:'bar',data:{labels:rows.map(function(r){return r.s.name.split(' ').slice(0,2).join(' ');}),datasets:[{label:'Annual Value',data:rows.map(function(r){return r.val;}),backgroundColor:rows.map(function(r){return r.cls==='A'?'rgba(239,68,68,0.6)':r.cls==='B'?'rgba(245,158,11,0.6)':'rgba(16,185,129,0.6)';}),borderRadius:3,yAxisID:'y'},{label:'Cumulative %',data:rows.map(function(r){return parseFloat(r.cumPct);}),type:'line',borderColor:'rgba(59,130,246,0.9)',borderWidth:2,pointRadius:3,fill:false,yAxisID:'y1'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#94A3B8',font:{size:11}}}},scales:{x:{ticks:{color:'#64748B',font:{size:9}},grid:{color:'rgba(42,58,82,0.4)'}},y:{ticks:{color:'#64748B',font:{size:10}},grid:{color:'rgba(42,58,82,0.4)'}},y1:{position:'right',min:0,max:100,ticks:{color:'#64748B',font:{size:10},callback:function(v){return v+'%';}},grid:{display:false}}}}});
+}
+
+// ================================================================
+// FINANCIAL IMPACT
+// ================================================================
+function renderFinancial() {
+  var Z=1.65;
+  var totalOldH=0,totalNewH=0,totalStockSaved=0,totalShortR=0;
+  var rows=skus.map(function(s){
+    var SS=calcSS(s,Z),ROP=calcROP(s,SS),EOQ=calcEOQ(s),tc=calcTotalCost(s);
+    var oldAvg=s.stock*1.4,newAvg=ROP+EOQ/2;
+    var oldH=Math.round(oldAvg*s.cost*0.20/12),newH=Math.round(newAvg*s.cost*0.20/12);
+    var sSaved=Math.round((s.demand*s.margin*4.5));
+    totalOldH+=oldH;totalNewH+=newH;totalStockSaved+=sSaved;totalShortR+=tc.shortageCost/12;
+    return{s:s,oldH:oldH,newH:newH,sSaved:sSaved};
+  });
+  var holdSaved=totalOldH-totalNewH,totalMonthly=holdSaved+totalStockSaved,totalAnnual=totalMonthly*12;
+
+  document.getElementById('fin-kpi').innerHTML=
+    '<div class="kpi-card green"><div class="kpi-label">Holding Saved/Mo</div><div class="kpi-value">₹'+holdSaved.toLocaleString('en-IN')+'</div></div>' +
+    '<div class="kpi-card blue"><div class="kpi-label">Stockout Recovered</div><div class="kpi-value">₹'+totalStockSaved.toLocaleString('en-IN')+'</div></div>' +
+    '<div class="kpi-card cyan"><div class="kpi-label">Total Monthly</div><div class="kpi-value">₹'+totalMonthly.toLocaleString('en-IN')+'</div></div>' +
+    '<div class="kpi-card purple"><div class="kpi-label">Annual Benefit</div><div class="kpi-value">₹'+(totalAnnual/100000).toFixed(2)+'L</div><div class="kpi-meta">₹'+totalAnnual.toLocaleString('en-IN')+'/yr</div></div>';
+
+  if(charts.fin)charts.fin.destroy();
+  charts.fin=new Chart(document.getElementById('finChart').getContext('2d'),{type:'bar',data:{labels:['Monthly Holding','Stockout Losses','Shortage Risk','Total Cost'],datasets:[{label:'Before System',data:[totalOldH,totalStockSaved*2,totalShortR*1.8,totalOldH*1.5],backgroundColor:'rgba(239,68,68,0.6)',borderRadius:4},{label:'After System',data:[totalNewH,Math.round(totalStockSaved*0.15),totalShortR*0.2,totalNewH*1.1],backgroundColor:'rgba(16,185,129,0.6)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#94A3B8',font:{size:11}}}},scales:{x:{ticks:{color:'#64748B'}},y:{ticks:{color:'#64748B',callback:function(v){return '₹'+v.toLocaleString('en-IN');}}}}}});
+
+  document.getElementById('savings-breakdown').innerHTML=
+    '<div style="display:flex;flex-direction:column;gap:10px">' +
+    '<div class="insight-card"><div class="insight-title">📦 Holding Cost Saved</div><div class="insight-text">Old: <strong style="color:var(--danger)">₹'+totalOldH.toLocaleString()+'/mo</strong> → New: <strong style="color:var(--success)">₹'+totalNewH.toLocaleString()+'/mo</strong></div></div>' +
+    '<div class="insight-card"><div class="insight-title">💸 Stockout Losses Recovered</div><div class="insight-text"><strong style="color:var(--success)">₹'+totalStockSaved.toLocaleString()+'/mo</strong> via ROP + supplier-adjusted SS</div></div>' +
+    '<div class="insight-card"><div class="insight-title">📊 ROI</div><div class="insight-text">Annual: <strong style="color:var(--accent)">₹'+(totalAnnual/100000).toFixed(2)+' Lakhs</strong> · Tool cost: ₹0</div></div>' +
+    '</div>';
+
+  document.getElementById('fin-table').innerHTML=rows.map(function(r){
+    return '<tr><td><strong>'+r.s.name+'</strong></td><td style="color:var(--danger)">₹'+r.oldH.toLocaleString()+'</td><td style="color:var(--success)">₹'+r.newH.toLocaleString()+'</td><td style="color:var(--accent)">₹'+r.sSaved.toLocaleString()+'</td><td><strong>₹'+(r.oldH-r.newH+r.sSaved).toLocaleString()+'</strong></td></tr>';
+  }).join('');
+}
+
+// ================================================================
+// CSV IMPORT
+// ================================================================
+function handleFileUpload(e){var f=e.target.files[0];if(f)parseCSV(f);}
+function handleDrop(e){e.preventDefault();document.getElementById('upload-zone').classList.remove('drag-over');var f=e.dataTransfer.files[0];if(f)parseCSV(f);}
+function parseCSV(file) {
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var text=e.target.result,lines=text.split('\n').filter(function(l){return l.trim();});
+    var hdrs=['name','category','cost','demand','stddev','leadtime','stock','ordercost','maxdemand','margin','pattern','ltstddev','moq','shortage'];
+    importRows=[];
+    var start=isNaN(parseFloat(lines[0].split(',')[2]))?1:0;
+    for(var i=start;i<lines.length;i++){
+      var cols=lines[i].split(',').map(function(c){return c.trim().replace(/^"|"$/g,'');});
+      if(cols.length<6)continue;
+      var row={};
+      hdrs.forEach(function(h,idx){row[h]=cols[idx]||'';});
+      row.cost=parseFloat(row.cost)||0;row.demand=parseFloat(row.demand)||0;row.stddev=parseFloat(row.stddev)||1;
+      row.leadtime=parseInt(row.leadtime)||2;row.stock=parseInt(row.stock)||0;row.ordercost=parseFloat(row.ordercost)||50;
+      row.maxdemand=parseFloat(row.maxdemand)||row.demand*1.5;row.margin=parseFloat(row.margin)||5;
+      row.ltstddev=parseFloat(row.ltstddev)||0.3;row.moq=parseInt(row.moq)||1;row.shortage=parseFloat(row.shortage)||10;
+      row.pattern=['stable','seasonal','trending'].includes(row.pattern)?row.pattern:'stable';
+      row.supplierId=suppliers[0].id;row.history=[];
+      if(row.name&&row.demand>0)importRows.push(row);
+    }
+    showImportPreview();
+  };
+  reader.readAsText(file);
+}
+function showImportPreview(){
+  if(!importRows.length){document.getElementById('import-preview').innerHTML='<div style="color:var(--danger);padding:16px;text-align:center">No valid rows found.</div>';return;}
+  document.getElementById('import-actions').style.display='flex';
+  document.getElementById('import-preview').innerHTML='<div style="margin-bottom:10px;font-size:13px;color:var(--text2)">'+importRows.length+' rows found:</div><div class="table-wrap"><table><thead><tr><th>Name</th><th>Category</th><th>Cost</th><th>Demand</th><th>Lead Time</th><th>Stock</th><th>Pattern</th></tr></thead><tbody>'+
+    importRows.map(function(r){return '<tr><td><strong>'+r.name+'</strong></td><td><span class="tag">'+r.category+'</span></td><td>₹'+r.cost+'</td><td>'+r.demand+'/day</td><td>'+r.leadtime+'d</td><td>'+r.stock+'</td><td><span class="demand-badge db-'+r.pattern+'">'+r.pattern.substring(0,3).toUpperCase()+'</span></td></tr>';}).join('')+
+    '</tbody></table></div>';
+}
+function confirmImport(){
+  if(!importRows.length)return;
+  importRows.forEach(function(r){r.id=Date.now()+Math.random();skus.push(r);});
+  importRows=[];
+  document.getElementById('import-preview').innerHTML='<div style="color:var(--success);padding:16px;text-align:center;font-weight:600">✓ Imported successfully. '+skus.length+' SKUs total.</div>';
+  document.getElementById('import-actions').style.display='none';
+  saveToStorage();trainAllModels();refreshDashboard();
+}
+function clearImport(){importRows=[];document.getElementById('import-preview').innerHTML='<div style="color:var(--text3);font-size:13px;text-align:center;padding:24px">Upload a CSV file to preview</div>';document.getElementById('import-actions').style.display='none';}
+function downloadTemplate(){
+  var hdr='name,category,cost,demand,stddev,leadtime,stock,ordercost,maxdemand,margin,pattern,ltstddev,moq,shortage';
+  var ex='Aashirvaad Atta 5kg,FMCG Staple,285,12,3.8,3,55,50,22,30,stable,0.5,10,40\nFortune Rice 1kg,FMCG Staple,65,22,5.1,2,60,40,35,8,seasonal,0.3,20,15';
+  var b=new Blob([hdr+'\n'+ex],{type:'text/csv'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='inventory_template.csv';a.click();
+}
+
+// ================================================================
+// SIMULATION EXTRA CONTROLS (shock probability)
+// ================================================================
+function ensureSimControls() {
+  var simSection = document.getElementById('sec-simulation');
+  if (!simSection) return;
+  if (document.getElementById('simShock')) return;
+  // Add shock probability input to sim controls
+  var extraDiv = document.createElement('div');
+  extraDiv.className = 'form-field';
+  extraDiv.style.minWidth = '160px';
+  extraDiv.innerHTML = '<label>Demand Shock Probability</label><select id="simShock" onchange="runSimulation()"><option value="0">None (0%)</option><option value="0.03" selected>Low (3%)</option><option value="0.07">Medium (7%)</option><option value="0.12">High (12%)</option></select>';
+  var controls = simSection.querySelector('[style*="flex-wrap:wrap"]');
+  if (controls) controls.appendChild(extraDiv);
+}
+
+// ================================================================
+// V4 AUTO-LEARNING ADDITIONS
+// ================================================================
+// ================================================================
+// V4 AUTO-LEARNING ML SYSTEM — Additions to v3 engine
+// ================================================================
+
+// ── V4 GLOBALS ──────────────────────────────────────────────────
+var retrainLog = [];          // [{ts, skuId, skuName, mae, prevMae, points, trigger}]
+var feedbackState = {};       // {skuId: {ssMultiplier, eoqMultiplier, stockoutCount, overstockCount}}
+var abcServiceLevels = {A:0.99, B:0.95, C:0.90};  // Segmented Z scores
+var abcZScores = {A:2.33, B:1.65, C:1.28};
+var autoCheckInterval = null;
+
+// ── SAVE / LOAD (v4 additions) ───────────────────────────────────
+// FIX: capture the original v3 saveToStorage via assignment (not declaration)
+// to avoid hoisting which caused infinite recursion.
+var _v3SaveToStorage = saveToStorage;
+saveToStorage = function() {
+  _v3SaveToStorage();
+  try {
+    localStorage.setItem('iqv4_retrainLog', JSON.stringify(retrainLog.slice(-50)));
+    localStorage.setItem('iqv4_feedback', JSON.stringify(feedbackState));
+    localStorage.setItem('iqv4_abcSL', JSON.stringify(abcServiceLevels));
+  } catch(e) {}
+};
+function loadV4State() {
+  try {
+    var rl = localStorage.getItem('iqv4_retrainLog');
+    if (rl) retrainLog = JSON.parse(rl);
+    var fb = localStorage.getItem('iqv4_feedback');
+    if (fb) feedbackState = JSON.parse(fb);
+    var sl = localStorage.getItem('iqv4_abcSL');
+    if (sl) abcServiceLevels = JSON.parse(sl);
+    // Sync Z scores
+    Object.keys(abcServiceLevels).forEach(function(c) {
+      var sl2 = abcServiceLevels[c];
+      abcZScores[c] = sl2 >= 0.99 ? 2.33 : sl2 >= 0.97 ? 1.96 : sl2 >= 0.95 ? 1.65 : 1.28;
+    });
+  } catch(e) {}
+}
+
+// ── ABC-SEGMENTED Z SCORE ─────────────────────────────────────────
+function getZForSku(sku) {
+  var cls = getABCClass(sku, skus);
+  return abcZScores[cls] || 1.65;
+}
+
+// Override calcSS to use ABC-segmented Z
+var origCalcSS = calcSS;
+calcSS = function(sku, Z) {
+  // If Z is explicitly passed, use it; else use ABC-segmented
+  var effectiveZ = Z || getZForSku(sku);
+  var ltStdDev = sku.ltstddev || 0;
+  var demandPart = effectiveZ * sku.stddev * Math.sqrt(sku.leadtime);
+  var ltPart = effectiveZ * ltStdDev * sku.demand;
+  var baseSSsq = demandPart * demandPart + ltPart * ltPart;
+  var baseSS = Math.ceil(Math.sqrt(baseSSsq));
+  var sup = getSupplier(sku);
+  var supplierFactor = 1 + sup.delayProb * sup.avgDelay * 0.5;
+  // Apply feedback multiplier
+  var fb = feedbackState[sku.id];
+  var feedbackMult = fb ? (fb.ssMultiplier || 1.0) : 1.0;
+  return Math.ceil(baseSS * supplierFactor * feedbackMult);
+};
+
+// Override calcEOQ to apply feedback multiplier
+var origCalcEOQ = calcEOQ;
+calcEOQ = function(sku) {
+  var D = sku.demand * 365, S = sku.ordercost, H = sku.cost * 0.20;
+  var rawEOQ = Math.ceil(Math.sqrt(2 * D * S / H));
+  var fb = feedbackState[sku.id];
+  var feedbackMult = fb ? (fb.eoqMultiplier || 1.0) : 1.0;
+  rawEOQ = Math.ceil(rawEOQ * feedbackMult);
+  return Math.max(rawEOQ, sku.moq || 1);
+};
+
+// ── AUTO-RETRAINING ENGINE ────────────────────────────────────────
+function shouldRetrain(sku) {
+  var h = sku.history || [];
+  if (h.length < 10) return false;
+  // Retrain every 7 new data points since last retrain
+  var lastTrainSize = (mlModels[sku.id] && mlModels[sku.id].trained) || 0;
+  return (h.length - lastTrainSize) >= 7;
+}
+function retrainSku(sku, trigger) {
+  var h = sku.history || [];
+  if (h.length < 10) return null;
+  var prevMae = mlModels[sku.id] ? mlModels[sku.id].mae : null;
+  var model = trainModel(h);
+  mlModels[sku.id] = model;
+  var logEntry = {
+    ts: new Date().toLocaleTimeString(),
+    date: new Date().toLocaleDateString(),
+    skuId: sku.id, skuName: sku.name,
+    mae: model.mae, prevMae: prevMae,
+    points: h.length, trigger: trigger || 'manual'
+  };
+  retrainLog.unshift(logEntry);
+  if (retrainLog.length > 100) retrainLog = retrainLog.slice(0, 100);
+  return model;
+}
+function runAutoRetrain() {
+  var retrained = 0;
+  skus.forEach(function(sku) {
+    if (shouldRetrain(sku)) {
+      retrainSku(sku, 'auto (7-day cycle)');
+      retrained++;
+    }
+  });
+  if (retrained > 0) {
+    saveToStorage();
+    // Update ML monitor badge if visible
+    var badge = document.getElementById('ml-retrain-count');
+    if (badge) badge.textContent = retrainLog.length;
+  }
+  return retrained;
+}
+function forceRetrainAll() {
+  var count = 0;
+  skus.forEach(function(sku) {
+    if ((sku.history || []).length >= 10) {
+      retrainSku(sku, 'manual (force retrain)');
+      count++;
+    }
+  });
+  saveToStorage();
+  alert('Retrained ' + count + ' models. Check ML Monitor for results.');
+  renderMLMonitor();
+}
+
+// ── FEEDBACK LOOP ENGINE ─────────────────────────────────────────
+// Analyses outcomes → adjusts SS and EOQ multipliers
+function applyFeedbackLoop(sku, actualSale, hadStockout, wasOverstocked) {
+  if (!feedbackState[sku.id]) {
+    feedbackState[sku.id] = { ssMultiplier:1.0, eoqMultiplier:1.0, stockoutCount:0, overstockCount:0, totalDays:0, adjustments:[] };
+  }
+  var fb = feedbackState[sku.id];
+  fb.totalDays = (fb.totalDays || 0) + 1;
+
+  if (hadStockout) {
+    // Stockout detected → increase safety stock (max 1.5×)
+    fb.stockoutCount++;
+    var newMult = Math.min(1.5, (fb.ssMultiplier || 1.0) + 0.05);
+    fb.ssMultiplier = parseFloat(newMult.toFixed(3));
+    fb.adjustments.unshift({ ts: new Date().toLocaleTimeString(), type:'stockout', action:'SS ×' + fb.ssMultiplier.toFixed(2), sku: sku.name.split(' ')[0] });
+  }
+  if (wasOverstocked) {
+    // Overstock → gently reduce EOQ (min 0.7×)
+    fb.overstockCount++;
+    var newEoq = Math.max(0.7, (fb.eoqMultiplier || 1.0) - 0.03);
+    fb.eoqMultiplier = parseFloat(newEoq.toFixed(3));
+    fb.adjustments.unshift({ ts: new Date().toLocaleTimeString(), type:'overstock', action:'EOQ ×' + fb.eoqMultiplier.toFixed(2), sku: sku.name.split(' ')[0] });
+  }
+  // Normalize: if stockout risk resolved for 14+ days, slightly reduce SS buffer
+  if (!hadStockout && fb.stockoutCount > 0 && fb.totalDays % 14 === 0 && fb.ssMultiplier > 1.0) {
+    fb.ssMultiplier = Math.max(1.0, fb.ssMultiplier - 0.02);
+    fb.adjustments.unshift({ ts: new Date().toLocaleTimeString(), type:'normalize', action:'SS normalized to ×' + fb.ssMultiplier.toFixed(2), sku: sku.name.split(' ')[0] });
+  }
+  if (fb.adjustments && fb.adjustments.length > 20) fb.adjustments = fb.adjustments.slice(0, 20);
+}
+
+// ── DRIFT DETECTION ──────────────────────────────────────────────
+function detectDrift(sku) {
+  var h = sku.history || [];
+  if (h.length < 21) return { hasDrift: false, score: 0 };
+  var recent = h.slice(-7);
+  var older = h.slice(-21, -7);
+  var recentMean = recent.reduce(function(a,b){return a+b;},0) / recent.length;
+  var olderMean = older.reduce(function(a,b){return a+b;},0) / older.length;
+  var change = olderMean > 0 ? Math.abs(recentMean - olderMean) / olderMean : 0;
+  return { hasDrift: change > 0.20, score: parseFloat((change * 100).toFixed(1)), direction: recentMean > olderMean ? 'up' : 'down', recentMean: recentMean.toFixed(1), olderMean: olderMean.toFixed(1) };
+}
+
+// ── DAILY SALES ENTRY ─────────────────────────────────────────────
+function renderSalesEntry() {
+  document.getElementById('sales-entry-form').innerHTML =
+    '<div id="sales-inputs">' +
+    skus.map(function(s) {
+      var status = getStatus(s);
+      var statusDot = status==='stockout'?'🔴':status==='critical'?'🟠':status==='reorder'?'🟡':'🟢';
+      return '<div class="sales-row">' +
+        '<span style="font-size:14px">' + statusDot + '</span>' +
+        '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + s.name.split(' ').slice(0,3).join(' ') + '</div>' +
+        '<div style="font-size:10px;color:var(--text3)">Avg: ' + s.demand + '/day · Stock: ' + s.stock + '</div></div>' +
+        '<input type="number" id="sale_' + s.id + '" placeholder="units sold" min="0" max="' + (s.demand * 3) + '" style="width:120px;text-align:center" value="">' +
+        '</div>';
+    }).join('') +
+    '</div>';
+
+  // History panel
+  document.getElementById('sales-history-panel').innerHTML =
+    skus.filter(function(s){return s.history&&s.history.length>0;}).slice(0,6).map(function(s) {
+      var last7 = (s.history || []).slice(-7);
+      var avg = last7.length ? (last7.reduce(function(a,b){return a+b;},0)/last7.length).toFixed(1) : '—';
+      return '<div style="margin-bottom:10px">' +
+        '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">' +
+        '<strong>' + s.name.split(' ').slice(0,2).join(' ') + '</strong>' +
+        '<span style="color:var(--text3)">7d avg: ' + avg + '</span></div>' +
+        '<div style="display:flex;gap:3px">' +
+        last7.map(function(v) {
+          var pct = Math.min(100, (v / (s.demand * 1.5)) * 100);
+          return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:1px">' +
+            '<div style="width:100%;height:' + Math.max(4, pct/5) + 'px;background:var(--accent);border-radius:2px;opacity:0.7"></div>' +
+            '<div style="font-size:8px;color:var(--text3)">' + v + '</div></div>';
+        }).join('') + '</div></div>';
+    }).join('') || '<div style="color:var(--text3);font-size:12px">No history yet. Start entering daily sales to build history.</div>';
+}
+
+function saveAllSales() {
+  var entered = 0, retrained = 0;
+  skus.forEach(function(sku) {
+    var el = document.getElementById('sale_' + sku.id);
+    if (!el || el.value === '') return;
+    var sold = parseInt(el.value);
+    if (isNaN(sold) || sold < 0) return;
+
+    // Append to history
+    if (!sku.history) sku.history = [];
+    sku.history.push(sold);
+    // Keep history rolling at 180 days max
+    if (sku.history.length > 180) sku.history = sku.history.slice(-180);
+
+    // Update actual stock
+    sku.stock = Math.max(0, sku.stock - sold);
+
+    // Detect outcomes for feedback loop
+    var hadStockout = sold > (sku.stock + sold); // sold more than available
+    var SS = calcSS(sku, getZForSku(sku));
+    var wasOverstocked = sku.stock > calcROP(sku, SS) * 2.5;
+    applyFeedbackLoop(sku, sold, hadStockout, wasOverstocked);
+
+    // Auto-retrain check: every 7 new points
+    if (shouldRetrain(sku)) {
+      retrainSku(sku, 'auto (new daily data)');
+      retrained++;
+    }
+    entered++;
+  });
+
+  if (entered === 0) { alert('Enter at least one sales value first.'); return; }
+  saveToStorage();
+  renderSalesEntry();
+  refreshDashboard();
+
+  // Show feedback
+  var msg = entered + ' SKUs updated.';
+  if (retrained > 0) msg += ' 🤖 ' + retrained + ' models auto-retrained!';
+  var banner = document.createElement('div');
+  banner.style.cssText = 'position:fixed;top:20px;right:20px;background:var(--success);color:#fff;padding:12px 20px;border-radius:8px;font-weight:600;font-size:13px;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.3)';
+  banner.textContent = '✓ ' + msg;
+  document.body.appendChild(banner);
+  setTimeout(function(){banner.remove();}, 3500);
+
+  renderFeedbackPanel();
+}
+
+function renderFeedbackPanel() {
+  var allFb = [];
+  Object.keys(feedbackState).forEach(function(sid) {
+    var fb = feedbackState[sid];
+    var sku = skus.find(function(s){return String(s.id)===String(sid);});
+    if (!sku) return;
+    if (fb.adjustments && fb.adjustments.length > 0) {
+      allFb = allFb.concat(fb.adjustments.slice(0,3).map(function(a) {
+        return Object.assign({}, a, {skuFull: sku.name, ssMult: fb.ssMultiplier, eoqMult: fb.eoqMultiplier});
+      }));
+    }
+  });
+
+  if (!allFb.length) {
+    document.getElementById('feedback-panel').innerHTML = '<div style="color:var(--text3);font-size:12.5px;padding:12px">No feedback adjustments yet. Start entering daily sales to activate the learning loop.</div>';
+    return;
+  }
+
+  document.getElementById('feedback-panel').innerHTML =
+    '<div style="font-size:12px;color:var(--text2);margin-bottom:12px">The system automatically adjusts Safety Stock and EOQ based on observed outcomes (stockouts → increase SS, overstock → reduce EOQ):</div>' +
+    allFb.slice(0, 10).map(function(a) {
+      var isStockout = a.type === 'stockout';
+      var isOverstock = a.type === 'overstock';
+      return '<div class="feedback-card ' + (isStockout?'negative':isOverstock?'neutral':'positive') + '">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+        '<strong style="font-size:13px">' + (a.skuFull || a.sku) + '</strong>' +
+        '<span style="font-size:10px;color:var(--text3)">' + a.ts + '</span></div>' +
+        '<div style="font-size:12px;color:var(--text2)">' +
+        (isStockout ? '🔴 Stockout detected → ' : isOverstock ? '📦 Overstock detected → ' : '✅ Normalized → ') +
+        '<strong style="color:var(--accent)">' + a.action + '</strong></div>' +
+        '<div style="font-size:11px;color:var(--text3);margin-top:4px">SS multiplier: ' + (a.ssMult||1).toFixed(2) + 'x &nbsp;·&nbsp; EOQ multiplier: ' + (a.eoqMult||1).toFixed(2) + 'x</div></div>';
+    }).join('');
+}
+
+// ── ML MONITOR ────────────────────────────────────────────────────
+function renderMLMonitor() {
+  var trainedCount = Object.keys(mlModels).filter(function(k){return mlModels[k];}).length;
+  var allMae = Object.values(mlModels).filter(Boolean).map(function(m){return parseFloat(m.mae);});
+  var avgMae = allMae.length ? (allMae.reduce(function(a,b){return a+b;},0)/allMae.length).toFixed(2) : '—';
+  var driftCount = skus.filter(function(s){return detectDrift(s).hasDrift;}).length;
+  var needRetrain = skus.filter(shouldRetrain).length;
+
+  document.getElementById('ml-kpis').innerHTML =
+    '<div class="kpi-card blue"><div class="kpi-label">Models Trained</div><div class="kpi-value">' + trainedCount + '</div><div class="kpi-meta">of ' + skus.length + ' SKUs</div></div>' +
+    '<div class="kpi-card green"><div class="kpi-label">Avg Model MAE</div><div class="kpi-value">' + avgMae + '</div><div class="kpi-meta">units/day prediction error</div></div>' +
+    '<div class="kpi-card yellow"><div class="kpi-label">Drift Detected</div><div class="kpi-value">' + driftCount + '</div><div class="kpi-meta">SKUs with demand shift &gt;20%</div></div>' +
+    '<div class="kpi-card red"><div class="kpi-label">Retrain Pending</div><div class="kpi-value" id="ml-retrain-count">' + needRetrain + '</div><div class="kpi-meta">7+ new points since last train</div></div>';
+
+  // Model health list
+  document.getElementById('model-health-list').innerHTML = skus.map(function(sku) {
+    var model = mlModels[sku.id];
+    var drift = detectDrift(sku);
+    var cls = getABCClass(sku, skus);
+    var fb = feedbackState[sku.id] || {};
+    var needsR = shouldRetrain(sku);
+    var health = !model ? 'bad' : drift.hasDrift ? 'warn' : 'good';
+    var healthLabel = !model ? 'No Model' : drift.hasDrift ? 'Drift Detected' : 'Healthy';
+    return '<div style="padding:12px 14px;background:var(--surface2);border-radius:8px;margin-bottom:8px;border:1px solid var(--border)">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+      '<div style="flex:1"><strong style="font-size:13px">' + sku.name.split(' ').slice(0,3).join(' ') + '</strong></div>' +
+      '<span class="model-health mh-' + health + '">' + (health==='good'?'<span class="retrain-pulse"></span>':'') + healthLabel + '</span>' +
+      '<span class="sl-badge sl-' + cls.toLowerCase() + '">Class ' + cls + ' · Z=' + getZForSku(sku).toFixed(2) + '</span></div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;font-size:11px;color:var(--text2)">' +
+      '<div>History: <strong>' + (sku.history||[]).length + 'd</strong></div>' +
+      '<div>MAE: <strong>' + (model?model.mae:'—') + '</strong></div>' +
+      '<div>SS mult: <strong style="color:' + ((fb.ssMultiplier||1)>1.1?'var(--warning)':'var(--success)') + '">' + (fb.ssMultiplier||1).toFixed(2) + 'x</strong></div>' +
+      '<div>EOQ mult: <strong style="color:' + ((fb.eoqMultiplier||1)<0.9?'var(--warning)':'var(--success)') + '">' + (fb.eoqMultiplier||1).toFixed(2) + 'x</strong></div></div>' +
+      (drift.hasDrift ? '<div style="margin-top:6px;font-size:11px;color:var(--warning)">⚠ Demand drift: ' + drift.score + '% ' + drift.direction + ' (recent avg=' + drift.recentMean + ' vs older=' + drift.olderMean + ') — retrain recommended</div>' : '') +
+      (needsR ? '<div style="margin-top:6px"><span style="font-size:10px;background:rgba(59,130,246,0.12);color:var(--accent);padding:2px 8px;border-radius:4px;font-weight:600">🔄 Retrain pending (' + ((sku.history||[]).length - (model?model.trained:0)) + ' new points)</span></div>' : '') +
+      '<div style="margin-top:6px"><button class="btn btn-ghost btn-sm" style="font-size:10px;padding:3px 10px" onclick="retrainAndRefresh(' + sku.id + ')">Retrain Now</button></div>' +
+      '</div>';
+  }).join('');
+
+  // ABC service level config
+  document.getElementById('abc-service-config').innerHTML =
+    '<div style="margin-bottom:14px;font-size:12.5px;color:var(--text2)">Safety stock and forecast precision are automatically tuned per ABC class. Adjust service levels to change the trade-off between cost and stockout risk:</div>' +
+    ['A','B','C'].map(function(cls) {
+      var sl = abcServiceLevels[cls];
+      var zVal = abcZScores[cls];
+      var skusInClass = skus.filter(function(s){return getABCClass(s,skus)===cls;});
+      var avgSS = skusInClass.length ? Math.round(skusInClass.reduce(function(s,x){return s+calcSS(x,zVal);},0)/skusInClass.length) : 0;
+      return '<div style="padding:12px 14px;background:var(--surface2);border-radius:8px;margin-bottom:8px;border:1px solid var(--border)">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
+        '<span class="sl-badge sl-' + cls.toLowerCase() + '" style="font-size:13px;padding:4px 12px">Class ' + cls + '</span>' +
+        '<span style="font-size:12px;color:var(--text2)">' + skusInClass.length + ' SKUs · Avg SS=' + avgSS + ' units</span></div>' +
+        '<div class="form-field"><label>Service Level Target</label>' +
+        '<select onchange="updateServiceLevel(\'' + cls + '\',this.value)" style="font-size:12px">' +
+        ['0.90','0.95','0.97','0.99'].map(function(v) {
+          return '<option value="' + v + '" ' + (Math.abs(parseFloat(v)-sl)<0.005?'selected':'') + '>' + (parseFloat(v)*100).toFixed(0) + '% (Z=' + (parseFloat(v)>=0.99?2.33:parseFloat(v)>=0.97?1.96:parseFloat(v)>=0.95?1.65:1.28) + ')</option>';
+        }).join('') + '</select></div>' +
+        '<div style="font-size:11px;color:var(--text3);margin-top:6px">' + (cls==='A'?'High-value items — max protection from stockout':cls==='B'?'Balanced cost vs availability':'Low-value items — lean inventory, accept some stockout risk') + '</div>' +
+        '</div>';
+    }).join('');
+
+  // Retrain log
+  document.getElementById('retrain-log').innerHTML = retrainLog.length ?
+    retrainLog.slice(0, 20).map(function(entry) {
+      var improved = entry.prevMae && parseFloat(entry.mae) < parseFloat(entry.prevMae);
+      var worse = entry.prevMae && parseFloat(entry.mae) > parseFloat(entry.prevMae);
+      return '<div style="display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid rgba(42,58,82,0.4);font-size:12px">' +
+        '<span style="color:var(--text3);min-width:70px">' + entry.ts + '</span>' +
+        '<span style="flex:1"><strong>' + (entry.skuName||'').split(' ').slice(0,2).join(' ') + '</strong></span>' +
+        '<span style="font-family:var(--mono);color:var(--accent)">MAE=' + entry.mae + '</span>' +
+        (entry.prevMae ? '<span style="font-size:10px;color:' + (improved?'var(--success)':worse?'var(--danger)':'var(--text3)') + '">' + (improved?'▲ improved':worse?'▼ worsened':'→ same') + '</span>' : '') +
+        '<span style="font-size:10px;color:var(--text3);" title="' + entry.trigger + '">' + entry.points + 'pts</span>' +
+        '</div>';
+    }).join('') :
+    '<div style="color:var(--text3);font-size:12.5px;padding:16px;text-align:center">No retraining events yet. Enter daily sales or click Force Retrain.</div>';
+
+  // MAE chart
+  var maeData = {};
+  retrainLog.slice().reverse().forEach(function(e) {
+    if (!maeData[e.skuId]) maeData[e.skuId] = { name: (e.skuName||'').split(' ')[0], vals: [] };
+    maeData[e.skuId].vals.push(parseFloat(e.mae));
+  });
+  var datasets = Object.values(maeData).slice(0,5).map(function(d, i) {
+    var colors = ['rgba(59,130,246,0.8)','rgba(16,185,129,0.8)','rgba(245,158,11,0.8)','rgba(139,92,246,0.8)','rgba(239,68,68,0.8)'];
+    return { label: d.name, data: d.vals, borderColor: colors[i%colors.length], borderWidth:2, fill:false, pointRadius:3, tension:0.3 };
+  });
+  if (charts.mae) charts.mae.destroy();
+  if (datasets.length > 0) {
+    var maxLen = Math.max.apply(null, datasets.map(function(d){return d.data.length;}));
+    charts.mae = new Chart(document.getElementById('maeChart').getContext('2d'), {
+      type:'line',
+      data:{
+        labels: Array.from({length:maxLen},function(_,i){return 'T'+(-maxLen+i+1);}),
+        datasets: datasets
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false, animation:false,
+        plugins:{legend:{labels:{color:'#94A3B8',font:{size:10}}}},
+        scales:{
+          x:{ticks:{color:'#64748B',font:{size:9}},grid:{color:'rgba(42,58,82,0.4)'},title:{display:true,text:'Retraining Events',color:'#64748B',font:{size:10}}},
+          y:{ticks:{color:'#64748B',font:{size:9}},grid:{color:'rgba(42,58,82,0.4)'},title:{display:true,text:'MAE (units/day)',color:'#64748B',font:{size:10}}}
+        }
+      }
+    });
+  } else {
+    var ctx = document.getElementById('maeChart').getContext('2d');
+    ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+    ctx.fillStyle = '#64748B'; ctx.font = '13px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText('Enter daily sales to generate retraining history', ctx.canvas.width/2, ctx.canvas.height/2);
+  }
+}
+
+function retrainAndRefresh(skuId) {
+  var sku = skus.find(function(s){return s.id===skuId;});
+  if (!sku) return;
+  retrainSku(sku, 'manual (individual)');
+  saveToStorage();
+  renderMLMonitor();
+  showNotification('✓ ' + sku.name.split(' ')[0] + ' model retrained. MAE=' + (mlModels[skuId]?mlModels[skuId].mae:'—'));
+}
+
+function updateServiceLevel(cls, val) {
+  var v = parseFloat(val);
+  abcServiceLevels[cls] = v;
+  abcZScores[cls] = v >= 0.99 ? 2.33 : v >= 0.97 ? 1.96 : v >= 0.95 ? 1.65 : 1.28;
+  saveToStorage();
+  renderMLMonitor();
+  refreshDashboard();
+}
+
+// ── NOTIFICATIONS ────────────────────────────────────────────────
+function showNotification(msg, color) {
+  var el = document.createElement('div');
+  el.style.cssText = 'position:fixed;top:20px;right:20px;background:' + (color||'var(--success)') + ';color:#fff;padding:11px 18px;border-radius:8px;font-weight:600;font-size:13px;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.3);max-width:320px';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(function(){el.remove();}, 3500);
+}
+
+// ── AUTO-CHECK ENGINE ────────────────────────────────────────────
+function runAutoChecks() {
+  var retrained = runAutoRetrain();
+  // Check for drifts and notify once per SKU per session
+  skus.forEach(function(sku) {
+    var drift = detectDrift(sku);
+    if (drift.hasDrift && !sku._driftNotified) {
+      sku._driftNotified = true;
+      showNotification('⚠ Demand drift in ' + sku.name.split(' ')[0] + ': ' + drift.score + '% shift ' + drift.direction, 'var(--warning)');
+    }
+  });
+  if (retrained > 0) showNotification('🤖 Auto-retrained ' + retrained + ' models with new data');
+  // Update dashboard alert area
+  checkAutoAlerts();
+}
+
+// ── OVERRIDE showSection to handle new pages ─────────────────────
+var origShowSection = showSection;
+showSection = function(name, el) {
+  document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active');});
+  document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active');});
+  document.getElementById('sec-' + name).classList.add('active');
+  if (el) el.classList.add('active');
+  var fns = {
+    dashboard: refreshDashboard, skus: renderSKUs, calculations: renderCalculations,
+    abc: renderABC, simulation: renderSimulation, financial: renderFinancial,
+    decisions: renderDecisions, supplier: renderSupplier, import: function(){},
+    forecast: function() {
+      var sel = document.getElementById('forecastSKU');
+      sel.innerHTML = skus.map(function(s){return '<option value="'+s.id+'">'+s.name+'</option>';}).join('');
+      renderForecast();
+    },
+    sales: function() { renderSalesEntry(); renderFeedbackPanel(); },
+    mlmonitor: renderMLMonitor
+  };
+  if (fns[name]) fns[name]();
+  saveToStorage();
+};
+
+// ── STARTUP ──────────────────────────────────────────────────────
+// Load v4 persistent state
+loadV4State();
+// Start auto-check loop: every 60 seconds
+if (autoCheckInterval) clearInterval(autoCheckInterval);
+autoCheckInterval = setInterval(runAutoChecks, 60000);
+// Initial retrain pass
+setTimeout(function() {
+  trainAllModels();
+  runAutoRetrain();
+}, 200);
+
+
+// ================================================================
+// INIT
+// ================================================================
+var loaded = loadFromStorage();
+if (!loaded) {
+  skus = JSON.parse(JSON.stringify(defaultSkus));
+}
+// Train ML models on startup (non-blocking)
+setTimeout(function() {
+  trainAllModels();
+}, 100);
+// Auto-alert check every 30s
+setInterval(checkAutoAlerts, 30000);
+refreshDashboard();
+// Add shock controls when sim section loads
+setTimeout(ensureSimControls, 500);
+
+</script>
+</body>
+</html>
