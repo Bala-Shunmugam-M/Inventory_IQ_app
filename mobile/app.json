@@ -2,42 +2,34 @@
   "expo": {
     "name": "InventoryIQ",
     "slug": "inventoryiq",
-    "version": "4.0.0",
+    "version": "8.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0B0F1A"
+      "backgroundColor": "#0D1226"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.inventoryiq.app"
+      "supportsTablet": false,
+      "bundleIdentifier": "com.balashunmugam.inventoryiq"
     },
     "android": {
-      "package": "com.inventoryiq.app",
-      "versionCode": 1,
+      "package": "com.balashunmugam.inventoryiq",
+      "versionCode": 8,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0B0F1A"
+        "backgroundColor": "#2563EB"
       }
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "plugins": [],
     "extra": {
-      "apiBaseUrl": "https://inventory-ai-51.preview.emergentagent.com",
       "eas": {
-        "projectId": "0673784b-d79a-4a2e-9df4-ff218973cf80"
+        "projectId": "your-project-id-here"
       }
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
-    "owner": "ruthra_2004"
+    }
   }
 }

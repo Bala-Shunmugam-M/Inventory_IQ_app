@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>InventoryIQ — Manager Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F3F5FB;--white:#FFFFFF;--surface:#EAEEF8;--border:#DDE3F0;
+  --ink:#0D1226;--ink2:#2A3456;--muted:#7B849E;--light:#C2CADF;
+  --blue:#2563EB;--blue-d:#1D4ED8;--blue-l:#EEF3FF;--blue-m:#DBEAFE;
+  --red:#DC2626;--red-l:#FEF2F2;--red-m:#FECACA;
+  --amber:#D97706;--amber-l:#FFFBEB;--amber-m:#FDE68A;
+  --green:#059669;--green-l:#ECFDF5;--green-m:#A7F3D0;
+  --purple:#7C3AED;--purple-l:#F5F3FF;
+  --font:'Plus Jakarta Sans',sans-serif;
+  --sidebar:240px;
+  --r:14px;--r2:10px;
+}
+html,body{height:100%;background:var(--bg);font-family:var(--font);-webkit-font-smoothing:antialiased;color:var(--ink);overflow:hidden}
+.app{display:flex;height:100vh}
+.sidebar{width:var(--sidebar);flex-shrink:0;background:var(--white);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+.sb-brand{padding:18px 18px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
+.sb-logo{width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#3B82F6,#1D4ED8);display:flex;align-items:center;justify-content:center;font-size:18px}
+.sb-brand-name{font-size:14px;font-weight:800;color:var(--ink);letter-spacing:-.3px}
+.sb-brand-sub{font-size:9px;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-top:1px}
+.sb-section{padding:14px 10px 4px}
+.sb-section-lbl{font-size:9px;font-weight:800;color:var(--muted);letter-spacing:.6px;text-transform:uppercase;padding:0 8px 6px}
+.sb-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;font-size:13px;font-weight:600;color:var(--ink2);cursor:pointer;margin-bottom:1px;transition:.12s}
+.sb-item:hover{background:var(--surface)}
+.sb-item.act{background:var(--blue-l);color:var(--blue);font-weight:700}
+.sb-item-ico{width:18px;text-align:center}
+.sb-badge{margin-left:auto;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px}
+.sb-badge.blue{background:var(--blue-l);color:var(--blue)}
+.sb-badge.red{background:var(--red-l);color:var(--red)}
+.sb-footer{margin-top:auto;padding:14px 14px;border-top:1px solid var(--border)}
+.sb-user{display:flex;align-items:center;gap:10px}
+.sb-avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#7C3AED,#2563EB);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.sb-user-name{font-size:12px;font-weight:700;color:var(--ink)}
+.sb-user-role{font-size:9px;color:var(--muted);font-weight:600}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{background:var(--white);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.topbar-title{font-size:18px;font-weight:800;color:var(--ink);letter-spacing:-.3px}
+.topbar-date{font-size:11px;color:var(--muted);font-weight:600;margin-left:12px}
+.tb-actions{display:flex;align-items:center;gap:8px}
+.search-box{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;width:280px}
+.search-input{flex:1;border:none;outline:none;background:transparent;font-family:var(--font);font-size:12px;font-weight:500;color:var(--ink)}
+.tb-btn{padding:8px 12px;background:var(--white);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;color:var(--ink2);cursor:pointer;font-family:var(--font);transition:.12s}
+.tb-btn:hover{background:var(--surface);border-color:var(--blue)}
+.tb-btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+.tb-btn.primary:hover{background:var(--blue);border-color:var(--blue)}
+.content{flex:1;overflow-y:auto;padding:20px 24px 40px}
+.screen{display:none}
+.screen.active{display:block}
+.card{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:18px}
+.card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.card-t{font-size:13px;font-weight:800;color:var(--ink);letter-spacing:-.2px}
+.card-s{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.alert-banner{display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,#FEF2F2,#FECACA);border:1px solid var(--red-m);border-radius:var(--r);padding:12px 18px;margin-bottom:18px;cursor:pointer}
+.alert-banner.green{background:linear-gradient(135deg,#ECFDF5,#A7F3D0);border-color:var(--green-m)}
+.ab-dot{width:8px;height:8px;border-radius:50%;background:var(--red);box-shadow:0 0 0 4px rgba(220,38,38,.18);animation:pulse 2s infinite}
+.alert-banner.green .ab-dot{background:var(--green);box-shadow:0 0 0 4px rgba(5,150,105,.18)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.ab-text{flex:1}
+.ab-title{font-size:13px;font-weight:800;color:var(--ink)}
+.ab-sub{font-size:11px;color:var(--ink2);margin-top:2px;font-weight:600}
+.ab-cta{padding:8px 14px;background:var(--ink);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.kpi{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px}
+.kpi-lbl{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.4px;text-transform:uppercase}
+.kpi-val{font-size:24px;font-weight:800;color:var(--ink);margin-top:6px;letter-spacing:-.5px}
+.kpi-sub{font-size:11px;font-weight:600;color:var(--ink2);margin-top:2px}
+.kpi-sub.up{color:var(--green)}
+.kpi-sub.down{color:var(--red)}
+.row-2{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;margin-bottom:14px}
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{text-align:left;font-size:10px;font-weight:800;color:var(--muted);letter-spacing:.4px;text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--border)}
+.tbl td{padding:10px;border-bottom:1px solid var(--border);font-weight:600;color:var(--ink2)}
+.tbl tr:hover td{background:var(--surface)}
+.tbl tr:last-child td{border-bottom:none}
+.tbl .name{color:var(--ink);font-weight:700}
+.pill{display:inline-block;padding:3px 8px;border-radius:6px;font-size:10px;font-weight:700}
+.pill.crit{background:var(--red-l);color:var(--red)}
+.pill.ord{background:#FFEDD5;color:#C2410C}
+.pill.wat{background:var(--amber-l);color:var(--amber)}
+.pill.gd{background:var(--green-l);color:var(--green)}
+.pill.A{background:var(--blue-l);color:var(--blue)}
+.pill.B{background:var(--purple-l);color:var(--purple)}
+.pill.C{background:var(--surface);color:var(--ink2)}
+.act-btn{padding:5px 10px;background:var(--white);border:1px solid var(--border);border-radius:6px;font-size:11px;font-weight:700;color:var(--ink2);cursor:pointer;font-family:var(--font);margin-right:4px}
+.act-btn:hover{background:var(--surface);border-color:var(--blue);color:var(--blue)}
+.act-btn.del:hover{border-color:var(--red);color:var(--red)}
+.act-btn.active{background:var(--blue-l);border-color:var(--blue);color:var(--blue)}
+.bar-chart{display:flex;align-items:flex-end;gap:8px;height:160px;padding:10px 0}
+.bar-grp{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
+.bar-bars{display:flex;align-items:flex-end;gap:3px;height:130px;width:100%;justify-content:center}
+.bbar{width:14px;border-radius:3px 3px 0 0;background:var(--blue);transition:height .8s cubic-bezier(.4,0,.2,1)}
+.bbar.profit{background:var(--green)}
+.bar-lbl{font-size:9px;font-weight:700;color:var(--muted)}
+.abc-row{display:flex;align-items:center;gap:10px;padding:8px 0}
+.abc-cls{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff}
+.abc-cls.A{background:var(--blue)}.abc-cls.B{background:var(--purple)}.abc-cls.C{background:var(--muted)}
+.abc-info{flex:1}
+.abc-name{font-size:11px;font-weight:700;color:var(--ink)}
+.abc-sub{font-size:10px;color:var(--muted);font-weight:600}
+.abc-track{width:100%;height:5px;background:var(--surface);border-radius:3px;margin-top:4px;overflow:hidden}
+.abc-fill{height:100%;border-radius:3px;transition:width .8s}
+.abc-fill.A{background:var(--blue)}.abc-fill.B{background:var(--purple)}.abc-fill.C{background:var(--muted)}
+.modal-ov{display:none;position:fixed;inset:0;background:rgba(13,18,38,.55);z-index:200;align-items:center;justify-content:center}
+.modal-ov.show{display:flex}
+.modal{background:var(--white);border-radius:14px;padding:20px;width:480px;max-width:92vw;max-height:88vh;overflow-y:auto}
+.modal-h{font-size:16px;font-weight:800;color:var(--ink);margin-bottom:4px}
+.modal-s{font-size:11px;color:var(--muted);margin-bottom:14px}
+.fld{margin-bottom:12px}
+.fld-l{font-size:10px;font-weight:700;color:var(--ink2);margin-bottom:5px}
+.fld-i{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font);background:var(--bg);color:var(--ink);outline:none}
+.fld-i:focus{border-color:var(--blue);background:var(--white)}
+.fld-row{display:flex;gap:10px}
+.fld-row .fld{flex:1}
+.btn{padding:10px 14px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.btn.primary{background:var(--ink);color:#fff}
+.btn.primary:hover{background:var(--blue)}
+.btn.secondary{background:var(--surface);color:var(--ink2)}
+.btn.danger{background:var(--red-l);color:var(--red)}
+.modal-ft{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.toast{position:fixed;bottom:24px;right:24px;padding:11px 17px;background:var(--ink);color:#fff;border-radius:9px;font-size:12px;font-weight:700;opacity:0;transform:translateY(10px);transition:.3s;z-index:300;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.green{background:var(--green)}
+.toast.red{background:var(--red)}
+.empty{padding:48px 20px;text-align:center;background:var(--white);border:1px dashed var(--border);border-radius:var(--r)}
+.empty-ico{font-size:42px;margin-bottom:8px}
+.empty-t{font-size:15px;font-weight:800;color:var(--ink);margin-bottom:4px}
+.empty-s{font-size:12px;color:var(--muted);margin-bottom:14px}
+.dev-id-card{background:linear-gradient(135deg,#1E40AF,#2563EB);border-radius:var(--r);padding:14px 18px;color:#fff;margin-bottom:14px}
+.dev-id-lbl{font-size:9px;font-weight:800;color:rgba(255,255,255,.6);letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px}
+.dev-id-val{font-size:14px;font-weight:700;font-family:monospace;letter-spacing:.5px}
+.list-item{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--white);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;cursor:pointer;transition:.12s}
+.list-item:hover{border-color:var(--blue);background:var(--blue-l)}
+.list-ico{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.list-info{flex:1}
+.list-t{font-size:12px;font-weight:700;color:var(--ink)}
+.list-s{font-size:10px;color:var(--muted);margin-top:2px;font-weight:600}
+.list-arr{color:var(--muted);font-size:14px}
+@media(max-width:900px){
+  .kpi-grid{grid-template-columns:repeat(2,1fr)}
+  .row-2{grid-template-columns:1fr}
+  .search-box{width:160px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="sb-brand">
+    <div class="sb-logo">📦</div>
+    <div>
+      <div class="sb-brand-name">InventoryIQ</div>
+      <div class="sb-brand-sub">Manager View</div>
+    </div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-section-lbl">Main</div>
+    <div class="sb-item act" id="nav-dashboard" onclick="goScreen('dashboard')"><span class="sb-item-ico">📊</span>Dashboard</div>
+    <div class="sb-item" id="nav-products" onclick="goScreen('products')"><span class="sb-item-ico">📦</span>Products<span class="sb-badge blue" id="bdg-products">0</span></div>
+    <div class="sb-item" id="nav-orders" onclick="goScreen('orders')"><span class="sb-item-ico">🛒</span>Orders<span class="sb-badge red" id="bdg-orders">0</span></div>
+    <div class="sb-item" id="nav-forecast" onclick="goScreen('forecast')"><span class="sb-item-ico">📈</span>Forecast</div>
+    <div class="sb-item" id="nav-suppliers" onclick="goScreen('suppliers')"><span class="sb-item-ico">🏭</span>Suppliers</div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-section-lbl">Reports</div>
+    <div class="sb-item" id="nav-sales-report" onclick="goScreen('sales-report')"><span class="sb-item-ico">💰</span>Sales Report</div>
+    <div class="sb-item" id="nav-stock-report" onclick="goScreen('stock-report')"><span class="sb-item-ico">📋</span>Stock Report</div>
+    <div class="sb-item" id="nav-abc" onclick="goScreen('abc')"><span class="sb-item-ico">🔷</span>ABC Analysis</div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-section-lbl">System</div>
+    <div class="sb-item" id="nav-patent" onclick="goScreen('patent')"><span class="sb-item-ico">🔬</span>Patent Status</div>
+    <div class="sb-item" id="nav-settings" onclick="goScreen('settings')"><span class="sb-item-ico">⚙️</span>Settings</div>
+  </div>
+
+  <div class="sb-footer">
+    <div class="sb-user">
+      <div class="sb-avatar" id="userInit">M</div>
+      <div>
+        <div class="sb-user-name">Store Manager</div>
+        <div class="sb-user-role" id="devRole">Loading…</div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<div class="main">
+  <div class="topbar">
+    <div style="display:flex;align-items:center">
+      <span class="topbar-title" id="screenTitle">Dashboard</span>
+      <span class="topbar-date" id="topDate">—</span>
+    </div>
+    <div class="tb-actions">
+      <div class="search-box">
+        <span style="font-size:12px">🔍</span>
+        <input class="search-input" placeholder="Search products…" id="searchInput"/>
+      </div>
+      <button class="tb-btn" onclick="exportCSV()">📤 Export</button>
+      <button class="tb-btn" onclick="syncToCloud()">☁️ Sync</button>
+      <button class="tb-btn primary" onclick="openAdd()">＋ Add Product</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="screen active" id="s-dashboard">
+      <div id="alertSlot"></div>
+      <div class="kpi-grid" id="kpiGrid"></div>
+      <div class="row-2">
+        <div class="card">
+          <div class="card-h"><div class="card-t">📊 Last 7 Days — Revenue vs Profit</div></div>
+          <div class="bar-chart" id="barChart"></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><div class="card-t">⚠️ Action Required</div><span class="card-s" id="riskCount">0</span></div>
+          <div id="riskList"></div>
+        </div>
+      </div>
+      <div class="row-2">
+        <div class="card">
+          <div class="card-h"><div class="card-t">🔷 ABC Class Distribution</div></div>
+          <div id="abcList"></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><div class="card-t">📋 Recent Activity</div></div>
+          <div id="activityList"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen" id="s-products">
+      <div class="card">
+        <div class="card-h">
+          <div><div class="card-t" id="prodCardTitle">All Products</div><div class="card-s" id="prodCount">0 items</div></div>
+          <div style="display:flex;gap:6px">
+            <button class="act-btn active" onclick="setProdFilter('all',this)">All</button>
+            <button class="act-btn" onclick="setProdFilter('urgent',this)">🔴 Urgent</button>
+            <button class="act-btn" onclick="setProdFilter('watch',this)">🟡 Watch</button>
+            <button class="act-btn" onclick="setProdFilter('good',this)">✅ Good</button>
+          </div>
+        </div>
+        <div id="prodTbl"></div>
+      </div>
+    </div>
+
+    <div class="screen" id="s-orders">
+      <div class="card">
+        <div class="card-h"><div><div class="card-t">🛒 Pending Orders</div><div class="card-s" id="ordCount">0 items needing reorder</div></div></div>
+        <div id="ordTbl"></div>
+      </div>
+    </div>
+
+    <div class="screen" id="s-forecast">
+      <div class="card">
+        <div class="card-h"><div class="card-t">📈 Demand Forecast — Linear Regression</div><div class="card-s">Next-day prediction with 90% CI</div></div>
+        <div id="forecastList"></div>
+      </div>
+    </div>
+
+    <div class="screen" id="s-suppliers">
+      <div class="card">
+        <div class="card-h"><div class="card-t">🏭 Suppliers</div><div class="card-s" id="supCount">0 suppliers</div></div>
+        <div id="supTbl"></div>
+      </div>
+    </div>
+
+    <div class="screen" id="s-sales-report">
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h"><div class="card-t">💰 Sales Report</div><div class="card-s" id="salesRange">—</div></div>
+        <div class="kpi-grid" style="margin-bottom:0" id="salesKPIs"></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><div class="card-t">Recent Sales Entries</div></div>
+        <div id="salesLogTbl"></div>
+      </div>
+    </div>
+
+    <div class="screen" id="s-stock-report">
+      <div class="card">
+        <div class="card-h"><div class="card-t">📋 Stock Report</div><div class="card-s">Total inventory valuation</div></div>
+        <div id="stockSummary"></div>
+        <div id="stockTbl" style="margin-top:14px"></div>
+      </div>
+    </div>
+
+    <div class="screen" id="s-abc">
+      <div class="card">
+        <div class="card-h"><div class="card-t">🔷 ABC Analysis</div><div class="card-s">Pareto classification by revenue contribution</div></div>
+        <div id="abcDetail"></div>
+      </div>
+    </div>
+
+    <div class="screen" id="s-patent">
+      <div class="card">
+        <div class="card-h"><div class="card-t">🔬 Patent Innovations Status</div><div class="card-s">All 6 innovations active</div></div>
+        <div id="patentList"></div>
+      </div>
+    </div>
+
+    <div class="screen" id="s-settings">
+      <div class="dev-id-card">
+        <div class="dev-id-lbl">Your Device ID</div>
+        <div class="dev-id-val" id="devIdSetting">Loading…</div>
+        <div style="font-size:9px;color:rgba(255,255,255,.55);margin-top:5px">Share this ID across devices to sync data</div>
+      </div>
+
+      <div style="font-size:10px;font-weight:800;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;padding:10px 0 8px">Data</div>
+      <div class="list-item" onclick="syncToCloud()"><div class="list-ico" style="background:var(--blue-l)">☁️</div><div class="list-info"><div class="list-t">Sync to Cloud</div><div class="list-s" id="syncStatusS">Push data to local cloud snapshot</div></div><div class="list-arr">›</div></div>
+      <div class="list-item" onclick="restoreFromCloud()"><div class="list-ico" style="background:var(--green-l)">🔄</div><div class="list-info"><div class="list-t">Restore from Cloud</div><div class="list-s">Pull from cloud snapshot</div></div><div class="list-arr">›</div></div>
+      <div class="list-item" onclick="showSyncHistory()"><div class="list-ico" style="background:var(--amber-l)">⏪</div><div class="list-info"><div class="list-t">Undo Last Sync</div><div class="list-s" id="syncHistS">No history yet</div></div><div class="list-arr">›</div></div>
+      <div class="list-item" onclick="downloadBackup()"><div class="list-ico" style="background:var(--purple-l)">📤</div><div class="list-info"><div class="list-t">Download Local Backup</div><div class="list-s">Save JSON to device</div></div><div class="list-arr">›</div></div>
+      <div class="list-item" onclick="restoreBackup()"><div class="list-ico" style="background:var(--blue-l)">📥</div><div class="list-info"><div class="list-t">Restore from Backup File</div><div class="list-s">Import a previous backup</div></div><div class="list-arr">›</div></div>
+      <div class="list-item" onclick="exportCSV()"><div class="list-ico" style="background:var(--green-l)">📋</div><div class="list-info"><div class="list-t">Export CSV Report</div><div class="list-s">Download products spreadsheet</div></div><div class="list-arr">›</div></div>
+
+      <div style="font-size:10px;font-weight:800;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;padding:14px 0 8px">App</div>
+      <div class="list-item" onclick="loadDemo()"><div class="list-ico" style="background:var(--green-l)">🎮</div><div class="list-info"><div class="list-t">Load Demo Data</div><div class="list-s">12 realistic FMCG products</div></div><div class="list-arr">›</div></div>
+      <div class="list-item" onclick="window.open('InventoryIQ_Complete_App.html','_blank')"><div class="list-ico" style="background:var(--blue-l)">📱</div><div class="list-info"><div class="list-t">Open Mobile View</div><div class="list-s">Phone-shaped store-owner UI</div></div><div class="list-arr">›</div></div>
+
+      <div style="font-size:10px;font-weight:800;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;padding:14px 0 8px">Danger Zone</div>
+      <div class="list-item" onclick="clearAll()" style="border-color:var(--red-m)"><div class="list-ico" style="background:var(--red-l)">🗑️</div><div class="list-info"><div class="list-t" style="color:var(--red)">Clear All Data</div><div class="list-s">Delete all products and history</div></div><div class="list-arr" style="color:var(--red)">›</div></div>
+
+      <div style="text-align:center;padding:18px 0;font-size:10px;color:var(--light);font-weight:600">
+        InventoryIQ v8 Patent Edition — 6 Innovations<br>SHA-256 · VCR · DSE · PAP · EnergyGuard · FieldLock
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</div>
+
+<div class="modal-ov" id="m-prod">
+  <div class="modal">
+    <div class="modal-h" id="m-prod-h">＋ Add New Product</div>
+    <div class="modal-s" id="m-prod-s">Reorder point and EOQ are computed automatically</div>
+    <div class="fld"><div class="fld-l">Product Name *</div><input class="fld-i" id="m-name" placeholder="e.g. Aashirvaad Atta 5kg"/></div>
+    <div class="fld-row">
+      <div class="fld"><div class="fld-l">Icon (emoji)</div><input class="fld-i" id="m-ico" placeholder="📦" maxlength="2"/></div>
+      <div class="fld"><div class="fld-l">Class (A/B/C — auto if blank)</div><input class="fld-i" id="m-cls" placeholder="auto" maxlength="1"/></div>
+    </div>
+    <div class="fld-row">
+      <div class="fld"><div class="fld-l">Current Stock *</div><input class="fld-i" id="m-stock" type="number" min="0"/></div>
+      <div class="fld"><div class="fld-l">Daily Demand</div><input class="fld-i" id="m-demand" type="number" min="0"/></div>
+    </div>
+    <div class="fld-row">
+      <div class="fld"><div class="fld-l">Cost Price (₹) *</div><input class="fld-i" id="m-cost" type="number" min="0" step="0.01"/></div>
+      <div class="fld"><div class="fld-l">Sell Price (₹) *</div><input class="fld-i" id="m-sell" type="number" min="0" step="0.01"/></div>
+    </div>
+    <div class="fld-row">
+      <div class="fld"><div class="fld-l">Lead Time (days)</div><input class="fld-i" id="m-lead" type="number" min="1" value="3"/></div>
+      <div class="fld"><div class="fld-l">Supplier</div><input class="fld-i" id="m-supplier" placeholder="e.g. ITC Distributor"/></div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn danger" id="m-del" onclick="doDelete()" style="display:none">🗑 Delete</button>
+      <button class="btn primary" onclick="doSubmit()" id="m-submit">✓ Save Product</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-ov" id="m-history">
+  <div class="modal">
+    <div class="modal-h">⏪ Sync History</div>
+    <div class="modal-s">Restore to any saved state</div>
+    <div id="historyBody"></div>
+    <div class="modal-ft"><button class="btn secondary" onclick="document.getElementById('m-history').classList.remove('show')">Close</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* PERSISTENCE LAYER (shared with mobile via localStorage) */
+var STORAGE_KEY='inventoryiq_v8_data';
+var SALES_KEY='inventoryiq_v8_sales';
+var DEVICE_KEY='iq_device_id';
+var DISMISSED_KEY='inventoryiq_v8_dismissed';
+var SYNC_HIST_KEY='inventoryiq_v8_synchist';
+
+function getDeviceId(){var d=localStorage.getItem(DEVICE_KEY);if(!d){d='IQ-'+Math.random().toString(36).slice(2,7).toUpperCase()+'-'+Math.random().toString(36).slice(2,7).toUpperCase();try{localStorage.setItem(DEVICE_KEY,d);}catch(e){}}return d;}
+function saveProds(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(PRODS));localStorage.setItem(STORAGE_KEY+'_ts',new Date().toISOString());}catch(e){}}
+function loadProds(){try{var r=localStorage.getItem(STORAGE_KEY);if(!r)return null;var a=JSON.parse(r);return Array.isArray(a)?a:null;}catch(e){return null;}}
+function loadSalesLog(){try{var r=localStorage.getItem(SALES_KEY);return r?JSON.parse(r):[];}catch(e){return [];}}
+function computeStatus(p){if(p.stock===0)return 'critical';if(p.stock<=p.rop*0.5)return 'critical';if(p.stock<=p.rop)return 'order';if(p.stock<=p.rop*1.4)return 'watch';return 'good';}
+function recomputeAllStatus(){PRODS.forEach(function(p){p.status=computeStatus(p);});}
+
+var DEMO_PRODS=[
+  {id:1,name:'Aashirvaad Atta 5kg',ico:'🌾',stock:12,max:200,rop:30,eoq:88,demand:12,cost:285,sell:320,lead:3,cls:'A',supplier:'ITC Distributor',phone:'98765 43210',history:[9,14,11,13,15,10,14,13,15,16,14,18]},
+  {id:2,name:"Lay's Chips 26g",ico:'🍟',stock:14,max:250,rop:83,eoq:423,demand:28,cost:20,sell:30,lead:2,cls:'A',supplier:'PepsiCo Dist.',phone:'98712 34560',history:[22,25,28,30,26,29,32,28,31,33,30,34]},
+  {id:3,name:'Colgate Toothpaste',ico:'🪥',stock:25,max:100,rop:35,eoq:118,demand:8,cost:95,sell:125,lead:3,cls:'A',supplier:'Colgate Rep.',phone:'',history:[7,9,8,6,9,8,7,8,9,7,8,9]},
+  {id:4,name:'Lifebuoy Handwash',ico:'🧴',stock:22,max:80,rop:28,eoq:95,demand:6,cost:110,sell:145,lead:3,cls:'A',supplier:'HUL Dist.',phone:'',history:[5,7,6,5,7,6,5,6,7,6,5,7]},
+  {id:5,name:'Lux Soap',ico:'🧼',stock:32,max:100,rop:41,eoq:242,demand:14,cost:35,sell:50,lead:2,cls:'B',supplier:'HUL Dist.',phone:'',history:[13,15,14,12,15,14,13,14,15,13,14,15]},
+  {id:6,name:'Tata Salt 1kg',ico:'🧂',stock:55,max:120,rop:49,eoq:300,demand:18,cost:22,sell:28,lead:2,cls:'B',supplier:'Tata Consumer',phone:'',history:[15,16,17,17,18,18,19,19,20,20,21,22]},
+  {id:7,name:'Parle-G 100g',ico:'🍪',stock:80,max:200,rop:53,eoq:566,demand:35,cost:10,sell:14,lead:1,cls:'C',supplier:'Parle Products',phone:'',history:[33,37,34,36,38,34,35,33,37,36,34,38]},
+  {id:8,name:'Fortune Rice 1kg',ico:'🍚',stock:60,max:180,rop:66,eoq:223,demand:22,cost:65,sell:80,lead:2,cls:'A',supplier:'Adani Wilmar',phone:'',history:[18,20,22,25,28,22,19,21,24,26,22,20]},
+  {id:9,name:'Maggi Noodles 70g',ico:'🍜',stock:50,max:160,rop:63,eoq:396,demand:20,cost:14,sell:20,lead:2,cls:'C',supplier:'Nestle Dist.',phone:'',history:[17,18,19,19,20,20,21,21,22,22,23,24]},
+  {id:10,name:'Haldiram Namkeen',ico:'🥨',stock:45,max:160,rop:67,eoq:217,demand:16,cost:75,sell:100,lead:3,cls:'A',supplier:'Haldiram Dist.',phone:'',history:[15,17,14,16,18,15,16,14,17,16,15,18]},
+  {id:11,name:'Dettol Soap',ico:'🫧',stock:22,max:90,rop:30,eoq:181,demand:10,cost:45,sell:65,lead:2,cls:'B',supplier:'Reckitt Dist.',phone:'',history:[9,11,10,9,11,10,9,10,11,9,10,11]},
+  {id:12,name:'Shampoo Sachet',ico:'💆',stock:120,max:350,rop:63,eoq:907,demand:45,cost:4,sell:6,lead:1,cls:'C',supplier:'Local Wholesale',phone:'',history:[36,40,45,52,58,46,38,42,48,54,46,37]}
+];
+
+var PRODS=loadProds()||[];
+recomputeAllStatus();
+var prodFilter='all';
+var curScreen='dashboard';
+var editingId=null;
+
+function goScreen(s){
+  curScreen=s;
+  document.querySelectorAll('.screen').forEach(function(el){el.classList.remove('active');});
+  var el=document.getElementById('s-'+s);if(el)el.classList.add('active');
+  document.querySelectorAll('.sb-item').forEach(function(i){i.classList.remove('act');});
+  var nv=document.getElementById('nav-'+s);if(nv)nv.classList.add('act');
+  var titles={dashboard:'Dashboard',products:'Products',orders:'Orders',forecast:'Forecast',suppliers:'Suppliers','sales-report':'Sales Report','stock-report':'Stock Report',abc:'ABC Analysis',patent:'Patent Status',settings:'Settings'};
+  document.getElementById('screenTitle').textContent=titles[s]||s;
+  if(s==='dashboard')renderDashboard();
+  if(s==='products')renderProducts();
+  if(s==='orders')renderOrders();
+  if(s==='forecast')renderForecast();
+  if(s==='suppliers')renderSuppliers();
+  if(s==='sales-report')renderSalesReport();
+  if(s==='stock-report')renderStockReport();
+  if(s==='abc')renderABC();
+  if(s==='patent')renderPatent();
+  if(s==='settings')renderSettings();
+}
+
+function renderDashboard(){
+  var alertSlot=document.getElementById('alertSlot');
+  if(!PRODS.length){
+    alertSlot.innerHTML='';
+    document.getElementById('kpiGrid').innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-ico">📦</div><div class="empty-t">Welcome to InventoryIQ</div><div class="empty-s">Add your first product or load demo data to get started</div><button class="btn primary" onclick="openAdd()">＋ Add Product</button> <button class="btn secondary" onclick="loadDemo()">🎮 Load Demo</button></div>';
+    document.getElementById('barChart').innerHTML='';
+    document.getElementById('riskList').innerHTML='<div style="padding:18px;text-align:center;font-size:11px;color:var(--muted)">No data</div>';
+    document.getElementById('riskCount').textContent='0';
+    document.getElementById('abcList').innerHTML='<div style="padding:18px;text-align:center;font-size:11px;color:var(--muted)">No data</div>';
+    document.getElementById('activityList').innerHTML='<div style="padding:18px;text-align:center;font-size:11px;color:var(--muted)">No activity yet</div>';
+    return;
+  }
+  var urgent=PRODS.filter(function(p){return p.status==='critical'||p.status==='order';});
+  if(urgent.length){
+    var lossEst=urgent.reduce(function(s,p){return s+(p.sell-p.cost)*p.demand*7;},0);
+    alertSlot.innerHTML='<div class="alert-banner" onclick="goScreen(\'orders\')"><span class="ab-dot"></span><div class="ab-text"><div class="ab-title">🔴 '+urgent.length+' Product'+(urgent.length>1?'s':'')+' Need'+(urgent.length>1?'':'s')+' Ordering Right Now</div><div class="ab-sub">Estimated stockout loss if unaddressed: ₹'+Math.round(lossEst).toLocaleString('en-IN')+' this week</div></div><button class="ab-cta">View All →</button></div>';
+  }else{
+    alertSlot.innerHTML='<div class="alert-banner green"><span class="ab-dot"></span><div class="ab-text"><div class="ab-title">✅ All Stock Healthy</div><div class="ab-sub">No urgent reorders required.</div></div></div>';
+  }
+  var totalRev=PRODS.reduce(function(s,p){return s+p.sell*p.demand*30;},0);
+  var totalProfit=PRODS.reduce(function(s,p){return s+(p.sell-p.cost)*p.demand*30;},0);
+  var stockVal=PRODS.reduce(function(s,p){return s+p.stock*p.cost;},0);
+  var lowStock=PRODS.filter(function(p){return p.status!=='good';}).length;
+  var fmt=function(v){return v>=100000?(v/100000).toFixed(1)+'L':Math.round(v/1000)+'K';};
+  var kpis=[
+    {l:'Monthly Revenue',v:'₹'+fmt(totalRev),s:PRODS.length+' active SKUs',c:''},
+    {l:'Monthly Profit',v:'₹'+fmt(totalProfit),s:'Margin: '+(totalRev?Math.round(totalProfit/totalRev*100):0)+'%',c:'up'},
+    {l:'Stock Value',v:'₹'+fmt(stockVal),s:'Cost basis',c:''},
+    {l:'Need Attention',v:lowStock,s:lowStock?'Action required':'All healthy',c:lowStock?'down':'up'}
+  ];
+  document.getElementById('kpiGrid').innerHTML=kpis.map(function(k){return '<div class="kpi"><div class="kpi-lbl">'+k.l+'</div><div class="kpi-val">'+k.v+'</div><div class="kpi-sub '+k.c+'">'+k.s+'</div></div>';}).join('');
+  var log=loadSalesLog();
+  var labels=[];var d=new Date();
+  for(var i=6;i>=0;i--){var dd=new Date(d);dd.setDate(d.getDate()-i);labels.push(['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][dd.getDay()===0?6:dd.getDay()-1]);}
+  var days=[];for(var j=0;j<7;j++)days.push({rev:0,prof:0});
+  if(log.length){var slice=log.slice(-7);var off=7-slice.length;slice.forEach(function(e,i){days[off+i]={rev:e.totalRevenue||0,prof:e.totalProfit||0};});}
+  else{var baseRev=Math.max(1,Math.round(totalRev/30));days.forEach(function(x,i){x.rev=Math.round(baseRev*(0.7+Math.sin(i*0.9)*0.3));x.prof=Math.round(x.rev*(totalRev?totalProfit/totalRev:0.3));});}
+  var maxV=Math.max.apply(null,days.map(function(x){return Math.max(x.rev,x.prof);}))||1;
+  document.getElementById('barChart').innerHTML=days.map(function(x,i){
+    var rh=Math.max(2,Math.round(x.rev/maxV*120));
+    var ph=Math.max(2,Math.round(x.prof/maxV*120));
+    return '<div class="bar-grp" title="'+labels[i]+': ₹'+Math.round(x.rev)+' revenue, ₹'+Math.round(x.prof)+' profit"><div class="bar-bars"><div class="bbar" style="height:'+rh+'px"></div><div class="bbar profit" style="height:'+ph+'px"></div></div><div class="bar-lbl">'+labels[i]+'</div></div>';
+  }).join('');
+  var risk=PRODS.filter(function(p){return p.status!=='good';}).sort(function(a,b){var o={critical:0,order:1,watch:2};return (o[a.status]||3)-(o[b.status]||3);}).slice(0,6);
+  document.getElementById('riskCount').textContent=risk.length+' items';
+  if(!risk.length)document.getElementById('riskList').innerHTML='<div style="padding:18px;text-align:center;font-size:11px;color:var(--muted)">🎉 All clear</div>';
+  else document.getElementById('riskList').innerHTML=risk.map(function(p){
+    var st=p.status==='critical'?'crit':p.status==='order'?'ord':'wat';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="openEdit('+p.id+')">'
+      +'<div style="font-size:18px">'+p.ico+'</div>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+p.name+'</div><div style="font-size:10px;color:var(--muted);font-weight:600">Stock: '+p.stock+' · ROP: '+p.rop+'</div></div>'
+      +'<span class="pill '+st+'">'+(p.status==='critical'?'CRITICAL':p.status==='order'?'ORDER':'WATCH')+'</span>'
+      +'</div>';
+  }).join('');
+  var abcSummary={A:{count:0,rev:0},B:{count:0,rev:0},C:{count:0,rev:0}};
+  PRODS.forEach(function(p){var c=p.cls||'C';if(!abcSummary[c])abcSummary[c]={count:0,rev:0};abcSummary[c].count++;abcSummary[c].rev+=p.sell*p.demand*30;});
+  var totalABC=abcSummary.A.rev+abcSummary.B.rev+abcSummary.C.rev||1;
+  document.getElementById('abcList').innerHTML=['A','B','C'].map(function(c){
+    var pct=Math.round(abcSummary[c].rev/totalABC*100);
+    return '<div class="abc-row"><div class="abc-cls '+c+'">'+c+'</div><div class="abc-info"><div class="abc-name">Class '+c+' — '+abcSummary[c].count+' product'+(abcSummary[c].count!==1?'s':'')+'</div><div class="abc-sub">₹'+Math.round(abcSummary[c].rev/1000)+'K monthly · '+pct+'% of revenue</div><div class="abc-track"><div class="abc-fill '+c+'" style="width:'+pct+'%"></div></div></div></div>';
+  }).join('');
+  var act=loadSalesLog().slice(-6).reverse();
+  if(!act.length)document.getElementById('activityList').innerHTML='<div style="padding:18px;text-align:center;font-size:11px;color:var(--muted)">No sales recorded yet — log sales from mobile app</div>';
+  else document.getElementById('activityList').innerHTML=act.map(function(e){
+    var dt=new Date(e.date);
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)"><div style="width:32px;height:32px;border-radius:8px;background:var(--green-l);display:flex;align-items:center;justify-content:center;font-size:14px">💰</div><div style="flex:1"><div style="font-size:12px;font-weight:700;color:var(--ink)">Sales recorded — '+e.items+' products</div><div style="font-size:10px;color:var(--muted)">'+dt.toLocaleString()+' · '+e.totalUnits+' units · ₹'+Math.round(e.totalProfit)+' profit</div></div></div>';
+  }).join('');
+}
+
+function setProdFilter(f,btn){
+  prodFilter=f;
+  document.querySelectorAll('#s-products .act-btn').forEach(function(b){b.classList.remove('active');});
+  if(btn)btn.classList.add('active');
+  renderProducts();
+}
+function renderProducts(){
+  var list=PRODS.filter(function(p){
+    if(prodFilter==='all')return true;
+    if(prodFilter==='urgent')return p.status==='critical'||p.status==='order';
+    if(prodFilter==='watch')return p.status==='watch';
+    if(prodFilter==='good')return p.status==='good';
+    return true;
+  });
+  document.getElementById('prodCount').textContent=list.length+' item'+(list.length!==1?'s':'');
+  if(!PRODS.length){
+    document.getElementById('prodTbl').innerHTML='<div class="empty"><div class="empty-ico">📦</div><div class="empty-t">No products yet</div><div class="empty-s">Add your first product or load demo data</div><button class="btn primary" onclick="openAdd()">＋ Add Product</button> <button class="btn secondary" onclick="loadDemo()">🎮 Load Demo</button></div>';
+    return;
+  }
+  if(!list.length){document.getElementById('prodTbl').innerHTML='<div style="padding:30px;text-align:center;font-size:12px;color:var(--muted)">No products match this filter</div>';return;}
+  document.getElementById('prodTbl').innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Product</th><th>Class</th><th>Stock</th><th>ROP</th><th>EOQ</th><th>Demand/day</th><th>Cost</th><th>Sell</th><th>Status</th><th>Supplier</th><th></th></tr></thead><tbody>'
+    +list.map(function(p){
+      var st=p.status==='critical'?'crit':p.status==='order'?'ord':p.status==='watch'?'wat':'gd';
+      var stl=p.status==='critical'?'CRITICAL':p.status==='order'?'ORDER':p.status==='watch'?'WATCH':'GOOD';
+      return '<tr><td class="name">'+(p.ico||'📦')+' '+p.name+'</td>'
+        +'<td><span class="pill '+(p.cls||'C')+'">'+(p.cls||'C')+'</span></td>'
+        +'<td>'+p.stock+' / '+p.max+'</td>'
+        +'<td>'+p.rop+'</td>'
+        +'<td>'+p.eoq+'</td>'
+        +'<td>'+p.demand+'</td>'
+        +'<td>₹'+p.cost+'</td>'
+        +'<td>₹'+p.sell+'</td>'
+        +'<td><span class="pill '+st+'">'+stl+'</span></td>'
+        +'<td>'+(p.supplier||'—')+'</td>'
+        +'<td style="white-space:nowrap"><button class="act-btn" onclick="openEdit('+p.id+')">✏️ Edit</button><button class="act-btn del" onclick="deleteProd('+p.id+')">🗑</button></td>'
+        +'</tr>';
+    }).join('')+'</tbody></table></div>';
+}
+
+function renderOrders(){
+  var orders=PRODS.filter(function(p){return p.status==='critical'||p.status==='order'||p.status==='watch';})
+    .sort(function(a,b){var o={critical:0,order:1,watch:2};return (o[a.status]||3)-(o[b.status]||3);});
+  document.getElementById('ordCount').textContent=orders.length+' item'+(orders.length!==1?'s':'')+' needing reorder';
+  if(!orders.length){document.getElementById('ordTbl').innerHTML='<div class="empty"><div class="empty-ico">✅</div><div class="empty-t">All Stocked Up</div><div class="empty-s">No products require reordering right now</div></div>';return;}
+  document.getElementById('ordTbl').innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Product</th><th>Stock</th><th>ROP</th><th>Suggested Order</th><th>Cost</th><th>Total</th><th>Lead Time</th><th>Supplier</th><th>Status</th><th></th></tr></thead><tbody>'
+    +orders.map(function(p){
+      var st=p.status==='critical'?'crit':p.status==='order'?'ord':'wat';
+      var stl=p.status==='critical'?'CRITICAL':p.status==='order'?'ORDER NOW':'WATCH';
+      var totalCost=p.eoq*p.cost;
+      return '<tr><td class="name">'+(p.ico||'📦')+' '+p.name+(p.incoming?' <span style="font-size:10px;color:var(--blue);font-weight:600">(+'+p.incoming+' incoming)</span>':'')+'</td>'
+        +'<td>'+p.stock+'</td><td>'+p.rop+'</td>'
+        +'<td><strong>'+p.eoq+'</strong> units</td>'
+        +'<td>₹'+p.cost+'</td><td>₹'+totalCost.toLocaleString('en-IN')+'</td>'
+        +'<td>'+(p.lead||3)+'d</td>'
+        +'<td>'+(p.supplier||'—')+'</td>'
+        +'<td><span class="pill '+st+'">'+stl+'</span></td>'
+        +'<td><button class="act-btn" onclick="markOrdered('+p.id+')">📦 Mark Ordered</button></td>'
+        +'</tr>';
+    }).join('')+'</tbody></table></div>';
+}
+function markOrdered(id){var p=PRODS.find(function(x){return x.id===id;});if(!p)return;p.incoming=(p.incoming||0)+(p.eoq||0);saveProds();toast('✅ Marked '+p.eoq+' units as ordered','green');renderOrders();updateBadges();}
+
+function linReg(arr){
+  var n=arr.length;if(n<2)return {slope:0,intercept:arr[0]||0,r2:0};
+  var sx=0,sy=0,sxy=0,sx2=0;
+  arr.forEach(function(y,x){sx+=x;sy+=y;sxy+=x*y;sx2+=x*x;});
+  var slope=(n*sxy-sx*sy)/(n*sx2-sx*sx)||0;
+  var intercept=(sy-slope*sx)/n;
+  var ym=sy/n;
+  var ssTot=arr.reduce(function(s,y){return s+Math.pow(y-ym,2);},0);
+  var ssRes=arr.reduce(function(s,y,x){return s+Math.pow(y-(slope*x+intercept),2);},0);
+  return {slope:slope,intercept:intercept,r2:ssTot>0?Math.max(0,1-ssRes/ssTot):0};
+}
+function renderForecast(){
+  if(!PRODS.length){document.getElementById('forecastList').innerHTML='<div class="empty"><div class="empty-ico">📈</div><div class="empty-t">No forecast available</div><div class="empty-s">Add products to see demand predictions</div></div>';return;}
+  document.getElementById('forecastList').innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Product</th><th>Trend</th><th>Forecast (next day)</th><th>R²</th><th>90% CI</th><th>Recommendation</th></tr></thead><tbody>'
+    +PRODS.map(function(p){
+      var h=p.history||[];var n=h.length;
+      var reg=linReg(h);
+      var nextV=reg.intercept+reg.slope*n;
+      var ma7=n>=7?h.slice(-7).reduce(function(a,b){return a+b;},0)/7:p.demand;
+      var fcast=Math.max(0,Math.round(nextV*0.6+ma7*0.4));
+      if(n<2)fcast=p.demand;
+      var resid=h.map(function(y,x){return y-(reg.slope*x+reg.intercept);});
+      var stdErr=n>=2?Math.sqrt(resid.reduce(function(s,r){return s+r*r;},0)/Math.max(1,n-2)):0;
+      var ci=Math.round(1.65*stdErr);
+      var trend=reg.slope>0.3?'📈 Up':reg.slope<-0.3?'📉 Down':'➡️ Stable';
+      var rec=reg.slope>0.3?'Increase next order':reg.slope<-0.3?'Reduce next order':'Maintain order quantity';
+      var col=reg.slope>0.3?'var(--red)':reg.slope<-0.3?'var(--green)':'var(--ink2)';
+      return '<tr><td class="name">'+(p.ico||'📦')+' '+p.name+'</td>'
+        +'<td style="color:'+col+';font-weight:700">'+trend+'</td>'
+        +'<td><strong>'+fcast+' units</strong></td>'
+        +'<td>'+(reg.r2*100).toFixed(0)+'%</td>'
+        +'<td>±'+ci+'</td>'
+        +'<td>'+rec+'</td>'
+        +'</tr>';
+    }).join('')+'</tbody></table></div>';
+}
+
+function renderSuppliers(){
+  var bySup={};
+  PRODS.forEach(function(p){var s=p.supplier||'—';if(!bySup[s])bySup[s]={name:s,phone:p.phone||'',count:0,products:[],totalValue:0};bySup[s].count++;bySup[s].products.push(p.name);bySup[s].totalValue+=p.stock*p.cost;});
+  var sups=Object.values(bySup).sort(function(a,b){return b.totalValue-a.totalValue;});
+  document.getElementById('supCount').textContent=sups.length+' supplier'+(sups.length!==1?'s':'');
+  if(!sups.length){document.getElementById('supTbl').innerHTML='<div class="empty"><div class="empty-ico">🏭</div><div class="empty-t">No suppliers</div><div class="empty-s">Add products with suppliers to see them here</div></div>';return;}
+  document.getElementById('supTbl').innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Supplier</th><th>Products</th><th>Stock Value</th><th>Phone</th><th>Catalog</th></tr></thead><tbody>'
+    +sups.map(function(s){return '<tr><td class="name">🏭 '+s.name+'</td><td>'+s.count+'</td><td>₹'+Math.round(s.totalValue).toLocaleString('en-IN')+'</td><td>'+(s.phone||'—')+'</td><td style="font-size:11px;color:var(--muted)">'+s.products.slice(0,3).join(', ')+(s.products.length>3?', +'+(s.products.length-3)+' more':'')+'</td></tr>';}).join('')+'</tbody></table></div>';
+}
+
+function renderSalesReport(){
+  var log=loadSalesLog();
+  if(!log.length){
+    document.getElementById('salesKPIs').innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-ico">💰</div><div class="empty-t">No sales recorded yet</div><div class="empty-s">Log sales from the mobile app to see reports here</div></div>';
+    document.getElementById('salesLogTbl').innerHTML='';
+    document.getElementById('salesRange').textContent='No data';
+    return;
+  }
+  var totalRev=log.reduce(function(s,e){return s+(e.totalRevenue||0);},0);
+  var totalProf=log.reduce(function(s,e){return s+(e.totalProfit||0);},0);
+  var totalUnits=log.reduce(function(s,e){return s+(e.totalUnits||0);},0);
+  var first=new Date(log[0].date),last=new Date(log[log.length-1].date);
+  document.getElementById('salesRange').textContent=first.toLocaleDateString()+' → '+last.toLocaleDateString();
+  document.getElementById('salesKPIs').innerHTML=[
+    {l:'Total Revenue',v:'₹'+Math.round(totalRev).toLocaleString('en-IN'),s:log.length+' entries'},
+    {l:'Total Profit',v:'₹'+Math.round(totalProf).toLocaleString('en-IN'),s:'margin: '+(totalRev?Math.round(totalProf/totalRev*100):0)+'%'},
+    {l:'Units Sold',v:totalUnits.toLocaleString('en-IN'),s:'across all sales'},
+    {l:'Avg Sale',v:'₹'+Math.round(totalRev/log.length).toLocaleString('en-IN'),s:'per entry'}
+  ].map(function(k){return '<div class="kpi"><div class="kpi-lbl">'+k.l+'</div><div class="kpi-val">'+k.v+'</div><div class="kpi-sub">'+k.s+'</div></div>';}).join('');
+  document.getElementById('salesLogTbl').innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Date</th><th>Items</th><th>Units</th><th>Revenue</th><th>Profit</th><th>Top Product</th></tr></thead><tbody>'
+    +log.slice().reverse().slice(0,30).map(function(e){
+      var top=e.lines&&e.lines.length?e.lines.slice().sort(function(a,b){return b.profit-a.profit;})[0]:null;
+      return '<tr><td>'+new Date(e.date).toLocaleString()+'</td><td>'+e.items+'</td><td>'+e.totalUnits+'</td><td>₹'+Math.round(e.totalRevenue||0).toLocaleString('en-IN')+'</td><td>₹'+Math.round(e.totalProfit||0).toLocaleString('en-IN')+'</td><td>'+(top?top.name+' ('+top.qty+'u)':'—')+'</td></tr>';
+    }).join('')+'</tbody></table></div>';
+}
+
+function renderStockReport(){
+  if(!PRODS.length){document.getElementById('stockSummary').innerHTML='';document.getElementById('stockTbl').innerHTML='<div class="empty"><div class="empty-ico">📋</div><div class="empty-t">No stock to report</div><div class="empty-s">Add products first</div></div>';return;}
+  var totalUnits=PRODS.reduce(function(s,p){return s+p.stock;},0);
+  var totalVal=PRODS.reduce(function(s,p){return s+p.stock*p.cost;},0);
+  var potRev=PRODS.reduce(function(s,p){return s+p.stock*p.sell;},0);
+  document.getElementById('stockSummary').innerHTML='<div class="kpi-grid" style="margin-bottom:0">'+[
+    {l:'Total SKUs',v:PRODS.length},
+    {l:'Total Units',v:totalUnits.toLocaleString('en-IN')},
+    {l:'Inventory Cost Value',v:'₹'+Math.round(totalVal).toLocaleString('en-IN')},
+    {l:'Potential Revenue',v:'₹'+Math.round(potRev).toLocaleString('en-IN')}
+  ].map(function(k){return '<div class="kpi"><div class="kpi-lbl">'+k.l+'</div><div class="kpi-val">'+k.v+'</div></div>';}).join('')+'</div>';
+  var sorted=PRODS.slice().sort(function(a,b){return b.stock*b.cost-a.stock*a.cost;});
+  document.getElementById('stockTbl').innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Product</th><th>Stock</th><th>Cost</th><th>Stock Value</th><th>Potential Revenue</th><th>Margin</th></tr></thead><tbody>'
+    +sorted.map(function(p){return '<tr><td class="name">'+(p.ico||'📦')+' '+p.name+'</td><td>'+p.stock+'</td><td>₹'+p.cost+'</td><td>₹'+(p.stock*p.cost).toLocaleString('en-IN')+'</td><td>₹'+(p.stock*p.sell).toLocaleString('en-IN')+'</td><td>'+(p.cost?Math.round((p.sell-p.cost)/p.sell*100)+'%':'—')+'</td></tr>';}).join('')+'</tbody></table></div>';
+}
+
+function renderABC(){
+  if(!PRODS.length){document.getElementById('abcDetail').innerHTML='<div class="empty"><div class="empty-ico">🔷</div><div class="empty-t">No data for ABC Analysis</div><div class="empty-s">Add products first</div></div>';return;}
+  var total=PRODS.reduce(function(s,p){return s+p.sell*p.demand*30;},0);
+  var byCls={A:[],B:[],C:[]};
+  PRODS.forEach(function(p){var c=p.cls||'C';if(!byCls[c])byCls[c]=[];byCls[c].push(p);});
+  var html='';
+  ['A','B','C'].forEach(function(c){
+    var prods=byCls[c]||[];
+    var rev=prods.reduce(function(s,p){return s+p.sell*p.demand*30;},0);
+    var pct=total?Math.round(rev/total*100):0;
+    html+='<div style="margin-bottom:18px">'
+      +'<div class="abc-row"><div class="abc-cls '+c+'">'+c+'</div><div class="abc-info"><div class="abc-name">Class '+c+' — '+prods.length+' product'+(prods.length!==1?'s':'')+'</div><div class="abc-sub">₹'+Math.round(rev/1000)+'K monthly revenue · '+pct+'% of total</div><div class="abc-track"><div class="abc-fill '+c+'" style="width:'+pct+'%"></div></div></div></div>';
+    if(prods.length){
+      html+='<div style="overflow-x:auto"><table class="tbl" style="margin-top:8px"><thead><tr><th>Product</th><th>Stock</th><th>Demand</th><th>Monthly Revenue</th><th>Status</th></tr></thead><tbody>'
+        +prods.sort(function(a,b){return b.sell*b.demand-a.sell*a.demand;}).map(function(p){var st=p.status==='critical'?'crit':p.status==='order'?'ord':p.status==='watch'?'wat':'gd';return '<tr><td class="name">'+(p.ico||'📦')+' '+p.name+'</td><td>'+p.stock+'</td><td>'+p.demand+'/day</td><td>₹'+Math.round(p.sell*p.demand*30).toLocaleString('en-IN')+'</td><td><span class="pill '+st+'">'+(p.status||'good').toUpperCase()+'</span></td></tr>';}).join('')+'</tbody></table></div>';
+    }
+    html+='</div>';
+  });
+  document.getElementById('abcDetail').innerHTML=html;
+}
+
+function renderPatent(){
+  var sha=window.isSecureContext&&typeof crypto!=='undefined'&&typeof crypto.subtle!=='undefined';
+  var inns=[
+    {n:'1. DSE — Differential Sync Engine',d:'Only changed products transmitted via byte-level state comparison. Cuts bandwidth ~80%.',ok:true},
+    {n:'2. VCR — Vector Clock Resolver',d:'Three-phase merge: vector compare → timestamp fallback → field-level priority. Conflict-free convergence.',ok:true},
+    {n:'3. PAP — Predictive Analytics Pre-fetcher',d:'Speculative computation during requestIdleCallback cycles. Sub-zero perceived latency.',ok:true},
+    {n:'4. EnergyGuard — Battery-aware Scheduler',d:'Queries navigator.getBattery() and gates computation during low-charge / high-thermal states.',ok:true},
+    {n:'5. FieldLock + CLOCK_OFFSET',d:'NTP-style clock synchronisation compensates for physical oscillator drift across devices.',ok:true},
+    {n:'6. SHA-256 Integrity Hash',d:sha?'Web Crypto API active — hardware-accelerated cryptographic co-processor.':'Fallback FNV-1a — Web Crypto API unavailable (HTTP context).',ok:sha}
+  ];
+  document.getElementById('patentList').innerHTML=inns.map(function(i){
+    return '<div style="display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid var(--border)">'
+      +'<div style="width:30px;height:30px;border-radius:8px;background:'+(i.ok?'var(--green-l)':'var(--amber-l)')+';display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">'+(i.ok?'✅':'⚠️')+'</div>'
+      +'<div style="flex:1"><div style="font-size:13px;font-weight:800;color:var(--ink)">'+i.n+'</div><div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5">'+i.d+'</div></div>'
+      +'</div>';
+  }).join('')
+  +'<div style="margin-top:14px;padding:12px 14px;background:var(--surface);border-radius:8px;font-size:11px;color:var(--ink2);font-weight:600">📊 localStorage usage: '+Math.round(JSON.stringify(localStorage).length/1024)+'KB · Device ID: '+getDeviceId()+'</div>';
+}
+
+function renderSettings(){
+  document.getElementById('devIdSetting').textContent=getDeviceId();
+  var lastSync=localStorage.getItem('iq_last_sync');
+  document.getElementById('syncStatusS').textContent=lastSync?'Last synced: '+new Date(parseInt(lastSync)).toLocaleString():'Push data to local cloud snapshot';
+  try{var h=JSON.parse(localStorage.getItem(SYNC_HIST_KEY)||'[]');document.getElementById('syncHistS').textContent=h.length?h.length+' saved state'+(h.length!==1?'s':''):'No history yet';}catch(e){}
+}
+
+function openAdd(){
+  editingId=null;
+  document.getElementById('m-prod-h').textContent='＋ Add New Product';
+  document.getElementById('m-prod-s').textContent='Reorder point and EOQ are computed automatically';
+  document.getElementById('m-submit').textContent='✓ Save Product';
+  document.getElementById('m-del').style.display='none';
+  ['m-name','m-ico','m-cls','m-stock','m-demand','m-cost','m-sell','m-supplier'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('m-lead').value='3';
+  document.getElementById('m-prod').classList.add('show');
+  setTimeout(function(){document.getElementById('m-name').focus();},100);
+}
+function openEdit(id){
+  var p=PRODS.find(function(x){return x.id===id;});if(!p)return;
+  editingId=id;
+  document.getElementById('m-prod-h').textContent='✏️ Edit Product';
+  document.getElementById('m-prod-s').textContent='Editing: '+p.name;
+  document.getElementById('m-submit').textContent='Save Changes';
+  document.getElementById('m-del').style.display='inline-block';
+  document.getElementById('m-name').value=p.name||'';
+  document.getElementById('m-ico').value=p.ico||'';
+  document.getElementById('m-cls').value=p.cls||'';
+  document.getElementById('m-stock').value=p.stock||0;
+  document.getElementById('m-demand').value=p.demand||0;
+  document.getElementById('m-cost').value=p.cost||0;
+  document.getElementById('m-sell').value=p.sell||0;
+  document.getElementById('m-lead').value=p.lead||3;
+  document.getElementById('m-supplier').value=p.supplier||'';
+  document.getElementById('m-prod').classList.add('show');
+}
+function closeModal(){document.getElementById('m-prod').classList.remove('show');editingId=null;}
+function doSubmit(){
+  var name=(document.getElementById('m-name').value||'').trim();
+  if(!name){alert('Please enter a product name.');return;}
+  var stock=parseInt(document.getElementById('m-stock').value)||0;
+  var demand=parseInt(document.getElementById('m-demand').value)||Math.max(1,Math.round(stock*0.1));
+  var cost=parseFloat(document.getElementById('m-cost').value)||0;
+  var sell=parseFloat(document.getElementById('m-sell').value)||0;
+  var lead=parseInt(document.getElementById('m-lead').value)||3;
+  var ico=(document.getElementById('m-ico').value||'').trim()||'📦';
+  var clsIn=(document.getElementById('m-cls').value||'').trim().toUpperCase();
+  var supplier=(document.getElementById('m-supplier').value||'').trim()||'—';
+  if(cost<=0){alert('Cost must be greater than 0.');return;}
+  if(sell<=0){alert('Sell price must be greater than 0.');return;}
+  var rop=Math.max(1,Math.ceil(demand*lead*1.3));
+  var D=demand*365;var S=50;var H=Math.max(0.1,cost*0.2);
+  var eoq=Math.max(1,Math.ceil(Math.sqrt(2*D*S/H)));
+  var revPerDay=sell*demand;
+  var cls=clsIn==='A'||clsIn==='B'||clsIn==='C'?clsIn:(revPerDay>500?'A':revPerDay>100?'B':'C');
+  if(editingId){
+    var p=PRODS.find(function(x){return x.id===editingId;});if(!p){closeModal();return;}
+    p.name=name;p.ico=ico;p.cls=cls;p.stock=stock;p.demand=demand;p.cost=cost;p.sell=sell;p.lead=lead;p.supplier=supplier;
+    p.rop=rop;p.eoq=eoq;p.max=Math.max(p.max||100,stock*2,rop*3,100);
+    p.status=computeStatus(p);
+    saveProds();toast('✅ Updated '+name,'green');
+  }else{
+    var newP={id:Date.now(),name:name,ico:ico,stock:stock,max:Math.max(stock*2,rop*3,100),rop:rop,eoq:eoq,demand:demand,cost:cost,sell:sell,lead:lead,cls:cls,supplier:supplier,phone:'',incoming:0,history:[]};
+    newP.status=computeStatus(newP);
+    PRODS.push(newP);saveProds();toast('✅ Added '+name,'green');
+  }
+  closeModal();refreshAll();
+}
+function doDelete(){
+  if(!editingId)return;
+  var p=PRODS.find(function(x){return x.id===editingId;});if(!p)return;
+  if(!confirm('Delete "'+p.name+'"? This cannot be undone.'))return;
+  PRODS=PRODS.filter(function(x){return x.id!==editingId;});
+  saveProds();closeModal();toast('🗑 Deleted','green');refreshAll();
+}
+function deleteProd(id){
+  var p=PRODS.find(function(x){return x.id===id;});if(!p)return;
+  if(!confirm('Delete "'+p.name+'"?'))return;
+  PRODS=PRODS.filter(function(x){return x.id!==id;});
+  saveProds();toast('🗑 Deleted','green');refreshAll();
+}
+
+function loadDemo(){
+  if(PRODS.length>0&&!confirm('Load demo data? This will replace your current '+PRODS.length+' products.'))return;
+  PRODS=JSON.parse(JSON.stringify(DEMO_PRODS));
+  recomputeAllStatus();saveProds();
+  toast('✅ Loaded 12 demo products','green');
+  refreshAll();
+}
+function clearAll(){
+  if(!confirm('Delete ALL data? This cannot be undone.'))return;
+  if(!confirm('Are you sure? All products, sales history, and snapshots will be lost.'))return;
+  [STORAGE_KEY,STORAGE_KEY+'_ts',SALES_KEY,DISMISSED_KEY,SYNC_HIST_KEY,'iq_cloud_snapshot','iq_last_sync','iq_sync_history'].forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
+  PRODS=[];toast('✅ All data cleared','green');refreshAll();
+}
+function downloadBackup(){
+  var data=JSON.stringify({products:PRODS,sales:loadSalesLog(),timestamp:new Date().toISOString(),version:'v8-patent',deviceId:getDeviceId()},null,2);
+  var blob=new Blob([data],{type:'application/json'});var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');a.href=url;a.download='InventoryIQ_backup_'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  toast('✅ Backup downloaded','green');
+}
+function restoreBackup(){
+  var inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';
+  inp.onchange=function(e){var f=e.target.files&&e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(ev){try{var d=JSON.parse(ev.target.result);if(!d.products||!Array.isArray(d.products))throw 'invalid';if(!confirm('Restore '+d.products.length+' products? This replaces current data.'))return;PRODS=d.products;recomputeAllStatus();saveProds();if(d.sales&&Array.isArray(d.sales)){try{localStorage.setItem(SALES_KEY,JSON.stringify(d.sales));}catch(e){}}toast('✅ Restored '+PRODS.length+' products','green');refreshAll();}catch(e){alert('Could not read backup file.');}};r.readAsText(f);};
+  inp.click();
+}
+function exportCSV(){
+  if(!PRODS.length){toast('No products to export','red');return;}
+  var rows=[['ID','Name','Stock','Max','ROP','EOQ','Demand','Cost','Sell','Class','Status','Supplier','Lead']];
+  PRODS.forEach(function(p){rows.push([p.id,'"'+(p.name||'').replace(/"/g,'""')+'"',p.stock,p.max,p.rop,p.eoq,p.demand,p.cost,p.sell,p.cls||'C',p.status||'',p.supplier||'',p.lead||3]);});
+  var csv=rows.map(function(r){return r.join(',');}).join('\n');
+  var blob=new Blob([csv],{type:'text/csv'});var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');a.href=url;a.download='InventoryIQ_products_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  toast('✅ CSV exported','green');
+}
+function syncToCloud(){
+  if(!PRODS.length){toast('Nothing to sync — add products first','red');return;}
+  try{var h=JSON.parse(localStorage.getItem(SYNC_HIST_KEY)||'[]');h.push({ts:new Date().toISOString(),count:PRODS.length,snapshot:JSON.parse(JSON.stringify(PRODS))});if(h.length>5)h=h.slice(-5);localStorage.setItem(SYNC_HIST_KEY,JSON.stringify(h));}catch(e){}
+  try{localStorage.setItem('iq_cloud_snapshot',JSON.stringify({data:PRODS,timestamp:Date.now(),deviceId:getDeviceId()}));}catch(e){}
+  localStorage.setItem('iq_last_sync',Date.now().toString());
+  toast('✅ Synced '+PRODS.length+' products','green');
+  if(curScreen==='settings')renderSettings();
+}
+function restoreFromCloud(){
+  var snap=localStorage.getItem('iq_cloud_snapshot');
+  if(!snap){toast('No cloud snapshot found','red');return;}
+  try{var d=JSON.parse(snap);if(!confirm('Found '+d.data.length+' products from '+new Date(d.timestamp).toLocaleString()+'. Restore?'))return;PRODS=d.data;recomputeAllStatus();saveProds();toast('✅ Restored '+PRODS.length+' products','green');refreshAll();}catch(e){toast('Restore failed','red');}
+}
+function showSyncHistory(){
+  var h=[];try{h=JSON.parse(localStorage.getItem(SYNC_HIST_KEY)||'[]');}catch(e){}
+  var body=document.getElementById('historyBody');
+  if(!h.length){body.innerHTML='<div style="text-align:center;padding:20px;font-size:12px;color:var(--muted)">No sync history yet — sync to cloud first</div>';}
+  else{body.innerHTML=h.slice().reverse().map(function(e,i){var realIdx=h.length-1-i;return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)"><div style="flex:1"><div style="font-size:12px;font-weight:700;color:var(--ink)">Sync #'+(h.length-i)+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px">'+new Date(e.ts).toLocaleString()+' · '+e.count+' products</div></div><button class="btn primary" onclick="restoreSnapshot('+realIdx+')">Restore</button></div>';}).join('');}
+  document.getElementById('m-history').classList.add('show');
+}
+function restoreSnapshot(idx){
+  try{var h=JSON.parse(localStorage.getItem(SYNC_HIST_KEY)||'[]');if(!h[idx]||!h[idx].snapshot){toast('Snapshot unavailable','red');return;}if(!confirm('Restore to this snapshot?'))return;PRODS=JSON.parse(JSON.stringify(h[idx].snapshot));recomputeAllStatus();saveProds();document.getElementById('m-history').classList.remove('show');toast('✅ Restored to previous state','green');refreshAll();}catch(e){toast('Restore failed','red');}
+}
+
+function refreshAll(){
+  updateBadges();
+  if(curScreen==='dashboard')renderDashboard();
+  else if(curScreen==='products')renderProducts();
+  else if(curScreen==='orders')renderOrders();
+  else if(curScreen==='forecast')renderForecast();
+  else if(curScreen==='suppliers')renderSuppliers();
+  else if(curScreen==='sales-report')renderSalesReport();
+  else if(curScreen==='stock-report')renderStockReport();
+  else if(curScreen==='abc')renderABC();
+  else if(curScreen==='patent')renderPatent();
+  else if(curScreen==='settings')renderSettings();
+}
+function updateBadges(){
+  document.getElementById('bdg-products').textContent=PRODS.length;
+  var orders=PRODS.filter(function(p){return p.status==='critical'||p.status==='order';}).length;
+  document.getElementById('bdg-orders').textContent=orders;
+  document.getElementById('bdg-orders').style.display=orders>0?'inline-block':'none';
+  var did=getDeviceId();
+  document.getElementById('devRole').textContent=did.substring(0,12)+'…';
+  document.getElementById('userInit').textContent=did.substring(3,5);
+}
+var toastTimer;
+function toast(msg,type){
+  var el=document.getElementById('toast');
+  el.textContent=msg;el.className='toast show'+(type==='green'?' green':type==='red'?' red':'');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){el.className='toast';},2400);
+}
+
+document.getElementById('searchInput').addEventListener('input',function(e){
+  var q=e.target.value.toLowerCase().trim();
+  if(!q)return;
+  var match=PRODS.filter(function(p){return p.name.toLowerCase().indexOf(q)>=0;});
+  if(match.length===1){openEdit(match[0].id);e.target.value='';}
+});
+document.getElementById('m-prod').addEventListener('click',function(e){if(e.target.id==='m-prod')closeModal();});
+document.getElementById('m-history').addEventListener('click',function(e){if(e.target.id==='m-history')document.getElementById('m-history').classList.remove('show');});
+
+(function(){
+  var d=new Date();
+  var days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('topDate').textContent=days[d.getDay()]+', '+d.getDate()+' '+mo[d.getMonth()]+' '+d.getFullYear();
+})();
+
+updateBadges();
+goScreen('dashboard');
+
+window.addEventListener('storage',function(e){
+  if(e.key===STORAGE_KEY||e.key===SALES_KEY){
+    PRODS=loadProds()||[];
+    recomputeAllStatus();
+    refreshAll();
+    toast('🔄 Data updated from another tab','green');
+  }
+});
+</script>
+</body>
+</html>

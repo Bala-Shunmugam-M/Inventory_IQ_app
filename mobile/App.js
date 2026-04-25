@@ -1,53 +1,79 @@
+/**
+ * InventoryIQ — React Native entry point
+ *
+ * Wires bottom-tab navigation across five screens. The brain
+ * (storage, formulas, ML, sync) lives in src/lib/ — these
+ * screens are presentation only.
+ */
+import 'react-native-gesture-handler';
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text, View } from 'react-native';
+import { Text } from 'react-native';
 
-import DashboardScreen from './src/screens/DashboardScreen';
-import SKUListScreen from './src/screens/SKUListScreen';
-import SalesEntryScreen from './src/screens/SalesEntryScreen';
+import HomeScreen from './src/screens/HomeScreen';
+import SalesScreen from './src/screens/SalesScreen';
+import ProductsScreen from './src/screens/ProductsScreen';
 import ForecastScreen from './src/screens/ForecastScreen';
 import MoreScreen from './src/screens/MoreScreen';
+import { COLORS } from './src/lib/theme';
 
 const Tab = createBottomTabNavigator();
 
-const navTheme = {
-  dark: true,
-  colors: {
-    primary: '#3B82F6',
-    background: '#0B0F1A',
-    card: '#121829',
-    text: '#E2E8F0',
-    border: '#1E293B',
-    notification: '#EF4444',
-  },
-};
-
-const tabIcon = (label) => ({ focused }) => (
-  <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.55 }}>{label}</Text>
+const tabIcon = (emoji) => ({ focused, color }) => (
+  <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.55 }}>{emoji}</Text>
 );
 
 export default function App() {
   return (
-    <NavigationContainer theme={navTheme}>
-      <StatusBar style="light" />
-      <Tab.Navigator
-        screenOptions={{
-          headerStyle: { backgroundColor: '#121829' },
-          headerTintColor: '#E2E8F0',
-          tabBarStyle: { backgroundColor: '#121829', borderTopColor: '#1E293B', height: 62, paddingBottom: 8, paddingTop: 6 },
-          tabBarActiveTintColor: '#3B82F6',
-          tabBarInactiveTintColor: '#64748B',
-          tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
-        }}
-      >
-        <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ tabBarIcon: tabIcon('📊') }} />
-        <Tab.Screen name="SKUs" component={SKUListScreen} options={{ tabBarIcon: tabIcon('📦'), title: 'SKU Manager' }} />
-        <Tab.Screen name="Sales" component={SalesEntryScreen} options={{ tabBarIcon: tabIcon('📝'), title: 'Daily Sales' }} />
-        <Tab.Screen name="Forecast" component={ForecastScreen} options={{ tabBarIcon: tabIcon('🤖'), title: 'AI Forecast' }} />
-        <Tab.Screen name="More" component={MoreScreen} options={{ tabBarIcon: tabIcon('⋯') }} />
-      </Tab.Navigator>
-    </NavigationContainer>
+    <SafeAreaProvider>
+      <StatusBar style="dark" />
+      <NavigationContainer>
+        <Tab.Navigator
+          screenOptions={{
+            headerStyle: { backgroundColor: COLORS.white },
+            headerTitleStyle: { fontWeight: '800', color: COLORS.ink },
+            tabBarStyle: {
+              backgroundColor: COLORS.white,
+              borderTopColor: COLORS.border,
+              height: 64,
+              paddingBottom: 8,
+              paddingTop: 6,
+            },
+            tabBarLabelStyle: { fontSize: 10, fontWeight: '700' },
+            tabBarActiveTintColor: COLORS.blue,
+            tabBarInactiveTintColor: COLORS.muted,
+          }}
+        >
+          <Tab.Screen
+            name="Home"
+            component={HomeScreen}
+            options={{ tabBarIcon: tabIcon('🏠'), title: 'InventoryIQ' }}
+          />
+          <Tab.Screen
+            name="Sales"
+            component={SalesScreen}
+            options={{ tabBarIcon: tabIcon('📝'), headerShown: false }}
+          />
+          <Tab.Screen
+            name="Products"
+            component={ProductsScreen}
+            options={{ tabBarIcon: tabIcon('📦'), headerShown: false }}
+          />
+          <Tab.Screen
+            name="Forecast"
+            component={ForecastScreen}
+            options={{ tabBarIcon: tabIcon('📈'), title: 'Forecast' }}
+          />
+          <Tab.Screen
+            name="More"
+            component={MoreScreen}
+            options={{ tabBarIcon: tabIcon('⚙️'), title: 'Settings' }}
+          />
+        </Tab.Navigator>
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }

@@ -1,127 +1,419 @@
-import React, { useEffect, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { loadSkus, saveSkus, defaultSkus, getClientId } from '../lib/storage';
-import { api } from '../lib/api';
+/**
+ * More Screen
+ *
+ * Settings, cloud sync, backup/restore, danger zone, and patent status.
+ * Mirrors the layout of the web build's "More" tab so users moving
+ * between web and APK see the same options.
+ */
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Modal,
+  Linking,
+} from 'react-native';
+import {
+  getDeviceId,
+  loadDemo,
+  clearAllData,
+  loadSyncHistory,
+  restoreSnapshot,
+} from '../lib/storage';
+import { syncToCloud, restoreFromCloud, isConfigured, getLastSyncTime } from '../lib/supabase';
+import { COLORS } from '../lib/theme';
 
-export default function MoreScreen() {
-  const [clientId, setClientId] = useState('');
-  const [backendStatus, setBackendStatus] = useState('checking...');
-  const [syncStatus, setSyncStatus] = useState('');
+export default function MoreScreen({ navigation }) {
+  const [deviceId, setDeviceId] = useState('');
+  const [lastSync, setLastSync] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState([]);
 
-  useEffect(() => {
-    (async () => {
-      setClientId(await getClientId());
-      try {
-        const h = await api.health();
-        setBackendStatus(h.status === 'healthy' ? '✓ Connected' : '⚠ Degraded');
-      } catch (e) {
-        setBackendStatus('✗ Offline');
-      }
-    })();
+  const refresh = useCallback(async () => {
+    setDeviceId(await getDeviceId());
+    setLastSync(await getLastSyncTime());
+    setHistory(await loadSyncHistory());
   }, []);
 
-  const syncNow = async () => {
-    setSyncStatus('Syncing...');
-    try {
-      const skus = await loadSkus();
-      const r = await api.syncSkus(clientId, skus);
-      setSyncStatus(`✓ Synced ${r.synced} SKUs to cloud`);
-    } catch (e) {
-      setSyncStatus('✗ Sync failed: ' + e.message);
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', refresh);
+    refresh();
+    return unsub;
+  }, [navigation, refresh]);
+
+  const doSync = async () => {
+    const result = await syncToCloud();
+    if (!result.ok) {
+      Alert.alert('Sync failed', result.reason || 'Unknown error');
+      return;
     }
+    Alert.alert(
+      '✅ Synced',
+      result.mode === 'cloud'
+        ? `Pushed ${result.count} products to cloud.`
+        : `Saved a local snapshot of ${result.count} products. Configure Supabase URL/key in src/lib/supabase.js for cross-device sync.`,
+    );
+    refresh();
   };
 
-  const restoreCloud = async () => {
-    setSyncStatus('Restoring...');
-    try {
-      const r = await api.getSkus(clientId);
-      if (r.count === 0) { setSyncStatus('No cloud data found for this device.'); return; }
-      await saveSkus(r.skus);
-      setSyncStatus(`✓ Restored ${r.count} SKUs from cloud`);
-    } catch (e) {
-      setSyncStatus('✗ Restore failed: ' + e.message);
-    }
+  const doRestore = () => {
+    Alert.prompt(
+      'Restore from cloud',
+      'Enter Device ID to pull from (leave blank to use this device):',
+      async (input) => {
+        const target = (input || '').trim();
+        const result = await restoreFromCloud(target);
+        if (!result.ok) {
+          Alert.alert('Restore failed', result.reason);
+          return;
+        }
+        Alert.alert(
+          '✅ Restored',
+          `Pulled ${result.count} products${
+            result.timestamp
+              ? ` from ${new Date(result.timestamp).toLocaleString()}`
+              : ''
+          }.`,
+        );
+        refresh();
+      },
+    );
   };
 
-  const resetLocal = async () => {
-    Alert.alert('Reset data?', 'This will restore default SKUs and erase local edits.', [
+  const showHistory = async () => {
+    setHistory(await loadSyncHistory());
+    setHistoryOpen(true);
+  };
+
+  const doRestoreSnapshot = (idx) => {
+    Alert.alert('Restore snapshot?', 'Current data will be replaced.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Reset', style: 'destructive', onPress: async () => {
-          await saveSkus(JSON.parse(JSON.stringify(defaultSkus)));
-          Alert.alert('✓ Reset', 'Default data restored.');
-      }},
+      {
+        text: 'Restore',
+        onPress: async () => {
+          await restoreSnapshot(idx);
+          setHistoryOpen(false);
+          Alert.alert('✅ Restored', 'App state rolled back.');
+          refresh();
+        },
+      },
     ]);
   };
 
+  const doDemo = () => {
+    Alert.alert('Load demo data?', 'This will replace your current products.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Load Demo',
+        onPress: async () => {
+          await loadDemo();
+          Alert.alert('✅ Demo loaded', '12 products loaded.');
+          refresh();
+        },
+      },
+    ]);
+  };
+
+  const doClear = () => {
+    Alert.alert(
+      'Clear ALL data?',
+      'Products, sales, snapshots — everything except your Device ID. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear Everything',
+          style: 'destructive',
+          onPress: async () => {
+            await clearAllData();
+            Alert.alert('✅ Cleared', 'All data removed.');
+            refresh();
+            navigation.navigate('Home');
+          },
+        },
+      ],
+    );
+  };
+
+  const lastSyncLabel = lastSync
+    ? `Last synced: ${new Date(lastSync).toLocaleString()}`
+    : isConfigured()
+    ? 'Tap to sync to cloud'
+    : 'Local snapshot mode (no cloud configured)';
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
-      <Text style={styles.h1}>Settings & More</Text>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Device & Sync</Text>
-        <InfoRow label="Device ID" value={clientId.slice(0, 22) + '…'} />
-        <InfoRow label="Backend" value={backendStatus} valueColor={backendStatus.startsWith('✓') ? '#10B981' : '#F59E0B'} />
-        <InfoRow label="API Base" value={api.base.replace('https://', '')} small />
-        {syncStatus ? <Text style={styles.status}>{syncStatus}</Text> : null}
-        <View style={styles.btnRow}>
-          <TouchableOpacity style={styles.btn} onPress={syncNow}>
-            <Text style={styles.btnText}>☁️ Backup to Cloud</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.btn, styles.btnGhost]} onPress={restoreCloud}>
-            <Text style={[styles.btnText, { color: '#3B82F6' }]}>↓ Restore</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Data Management</Text>
-        <Text style={styles.desc}>All inventory data is stored locally on your device via AsyncStorage. Optional cloud backup uses your Device ID as the sync key (no login required).</Text>
-        <TouchableOpacity style={[styles.btn, styles.btnDanger]} onPress={resetLocal}>
-          <Text style={[styles.btnText, { color: '#EF4444' }]}>⚠ Reset to Defaults</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>About InventoryIQ Mobile</Text>
-        <Text style={styles.desc}>
-          v4.0 — A companion mobile app to the InventoryIQ web system. Implements the full EOQ + ROP + Safety Stock + ABC framework with offline-first storage and optional cloud sync.
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ padding: 14, paddingBottom: 40 }}
+    >
+      {/* Device ID card */}
+      <View style={styles.devCard}>
+        <Text style={styles.devLabel}>YOUR DEVICE ID</Text>
+        <Text style={styles.devId}>{deviceId}</Text>
+        <Text style={styles.devHint}>
+          Share this ID across devices to sync data
         </Text>
-        <View style={{ marginTop: 8 }}>
-          <Text style={styles.feature}>✓ Real-time inventory dashboard</Text>
-          <Text style={styles.feature}>✓ ABC-adjusted safety stock</Text>
-          <Text style={styles.feature}>✓ Daily sales entry → auto history</Text>
-          <Text style={styles.feature}>✓ Server-side AI forecast (MA + trend)</Text>
-          <Text style={styles.feature}>✓ Offline-first, cloud backup optional</Text>
-        </View>
       </View>
+
+      <Text style={styles.sectionLabel}>DATA</Text>
+
+      <SettingItem
+        icon="☁️"
+        bg={COLORS.blueLight}
+        title="Sync to Cloud"
+        sub={lastSyncLabel}
+        onPress={doSync}
+      />
+      <SettingItem
+        icon="🔄"
+        bg={COLORS.greenLight}
+        title="Restore from Cloud"
+        sub="Pull data from another device"
+        onPress={doRestore}
+      />
+      <SettingItem
+        icon="⏪"
+        bg={COLORS.amberLight}
+        title="Undo Last Sync"
+        sub={
+          history.length
+            ? `${history.length} saved state${history.length !== 1 ? 's' : ''} — tap to view`
+            : 'No sync history yet'
+        }
+        onPress={showHistory}
+      />
+
+      <Text style={styles.sectionLabel}>APP</Text>
+
+      <SettingItem
+        icon="🎮"
+        bg={COLORS.greenLight}
+        title="Load Demo Data"
+        sub="12 realistic FMCG products"
+        onPress={doDemo}
+      />
+      <SettingItem
+        icon="🌐"
+        bg={COLORS.blueLight}
+        title="Open Web Dashboard"
+        sub="View desktop manager dashboard"
+        onPress={() =>
+          Linking.openURL(
+            'https://bala-shunmugam-m.github.io/Inventory_IQ_app/dashboard.html',
+          )
+        }
+      />
+
+      <Text style={styles.sectionLabel}>PATENT</Text>
+
+      <SettingItem
+        icon="🔬"
+        bg={COLORS.purpleLight}
+        title="Patent Status"
+        sub="6 innovations · DSE · VCR · PAP · EnergyGuard · FieldLock · SHA-256"
+        onPress={() =>
+          Alert.alert(
+            'Patent Innovations',
+            '1. DSE — Differential Sync Engine\n2. VCR — Vector Clock Resolver\n3. PAP — Predictive Analytics Pre-fetcher\n4. EnergyGuard — Battery-aware Scheduler\n5. FieldLock — Field-level Concurrency Lock\n6. SHA-256 — Cryptographic Integrity Hash\n\nAll 6 innovations active in this build.',
+          )
+        }
+      />
+
+      <Text style={[styles.sectionLabel, { color: COLORS.red }]}>DANGER ZONE</Text>
+
+      <SettingItem
+        icon="🗑️"
+        bg={COLORS.redLight}
+        title="Clear All Data"
+        sub="Delete all products and history"
+        titleColor={COLORS.red}
+        onPress={doClear}
+      />
+
+      <Text style={styles.footer}>
+        InventoryIQ v8.1 — Patent Edition{'\n'}
+        6 innovations · SHA-256 · VCR · DSE · PAP · EnergyGuard · FieldLock
+      </Text>
+
+      {/* History modal */}
+      <Modal
+        visible={historyOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setHistoryOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>⏪ Sync History</Text>
+            <Text style={styles.modalSub}>Restore to any saved state</Text>
+            {history.length === 0 ? (
+              <Text style={styles.noHist}>
+                No sync history yet — push to cloud first.
+              </Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 320 }}>
+                {history
+                  .slice()
+                  .reverse()
+                  .map((h, i) => {
+                    const realIdx = history.length - 1 - i;
+                    return (
+                      <View key={i} style={styles.histRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.histTitle}>
+                            Sync #{history.length - i}
+                          </Text>
+                          <Text style={styles.histMeta}>
+                            {new Date(h.ts).toLocaleString()} · {h.count} products
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.histBtn}
+                          onPress={() => doRestoreSnapshot(realIdx)}
+                        >
+                          <Text style={styles.histBtnText}>Restore</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+              </ScrollView>
+            )}
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={() => setHistoryOpen(false)}
+            >
+              <Text style={styles.closeBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
 
-function InfoRow({ label, value, valueColor, small }) {
+function SettingItem({ icon, bg, title, sub, onPress, titleColor }) {
   return (
-    <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={[styles.infoVal, valueColor && { color: valueColor }, small && { fontSize: 11 }]}>{value}</Text>
-    </View>
+    <TouchableOpacity style={styles.row} onPress={onPress}>
+      <View style={[styles.rowIco, { backgroundColor: bg }]}>
+        <Text style={{ fontSize: 18 }}>{icon}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.rowTitle, titleColor && { color: titleColor }]}>
+          {title}
+        </Text>
+        <Text style={styles.rowSub}>{sub}</Text>
+      </View>
+      <Text style={styles.rowArrow}>›</Text>
+    </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0B0F1A', padding: 16 },
-  h1: { color: '#E2E8F0', fontSize: 22, fontWeight: '800', marginBottom: 16 },
-  card: { backgroundColor: '#121829', padding: 14, borderRadius: 10, marginBottom: 12, borderWidth: 1, borderColor: '#1E293B' },
-  cardTitle: { color: '#E2E8F0', fontSize: 14, fontWeight: '700', marginBottom: 10 },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomColor: '#1E293B', borderBottomWidth: 1 },
-  infoLabel: { color: '#64748B', fontSize: 12 },
-  infoVal: { color: '#E2E8F0', fontSize: 12.5, fontWeight: '600' },
-  desc: { color: '#94A3B8', fontSize: 12, lineHeight: 18 },
-  feature: { color: '#CBD5E1', fontSize: 12, marginTop: 2 },
-  status: { color: '#3B82F6', fontSize: 12, marginTop: 8, fontFamily: 'Courier' },
-  btnRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  btn: { flex: 1, backgroundColor: '#3B82F6', padding: 11, borderRadius: 8, alignItems: 'center' },
-  btnGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#3B82F6' },
-  btnDanger: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#EF4444', marginTop: 10 },
-  btnText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  devCard: {
+    backgroundColor: COLORS.blue,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 16,
+  },
+  devLabel: {
+    fontSize: 9,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    marginBottom: 4,
+  },
+  devId: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '700',
+    fontFamily: Platform_select_monospace(),
+    letterSpacing: 0.5,
+  },
+  devHint: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '600',
+    marginTop: 6,
+  },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.muted,
+    letterSpacing: 0.5,
+    marginTop: 8,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  row: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 6,
+  },
+  rowIco: {
+    width: 36,
+    height: 36,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rowTitle: { fontSize: 12, fontWeight: '700', color: COLORS.ink },
+  rowSub: { fontSize: 10, color: COLORS.muted, fontWeight: '600', marginTop: 2 },
+  rowArrow: { fontSize: 16, color: COLORS.muted },
+  footer: {
+    textAlign: 'center',
+    fontSize: 10,
+    color: COLORS.light,
+    fontWeight: '600',
+    marginTop: 20,
+    lineHeight: 16,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(13,18,38,0.55)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modal: { backgroundColor: COLORS.white, borderRadius: 14, padding: 18 },
+  modalTitle: { fontSize: 16, fontWeight: '800', color: COLORS.ink },
+  modalSub: { fontSize: 11, color: COLORS.muted, marginTop: 2, marginBottom: 12 },
+  noHist: { padding: 20, textAlign: 'center', color: COLORS.muted, fontSize: 12 },
+  histRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  histTitle: { fontSize: 12, fontWeight: '700', color: COLORS.ink },
+  histMeta: { fontSize: 10, color: COLORS.muted, fontWeight: '600', marginTop: 2 },
+  histBtn: {
+    backgroundColor: COLORS.ink,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 7,
+  },
+  histBtnText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  closeBtn: {
+    marginTop: 14,
+    backgroundColor: COLORS.surface,
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  closeBtnText: { color: COLORS.ink2, fontWeight: '700', fontSize: 13 },
 });
+
+function Platform_select_monospace() {
+  // RN doesn't have a portable monospace family without importing Platform;
+  // 'monospace' falls back gracefully on both iOS and Android.
+  return 'monospace';
+}

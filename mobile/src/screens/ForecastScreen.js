@@ -1,152 +1,271 @@
-import React, { useCallback, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { LineChart } from 'react-native-chart-kit';
-import { loadSkus } from '../lib/storage';
-import { api } from '../lib/api';
+/**
+ * Forecast Screen
+ *
+ * Per-product demand prediction. Uses linear regression on the
+ * recent sales history blended with a 7-day moving average:
+ *   forecast = 0.6 × LinReg(next) + 0.4 × MA7
+ *
+ * Shows R² (model fit), 90% confidence interval, trend direction,
+ * and a recommendation for the next order.
+ */
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+} from 'react-native';
+import { loadProducts, forecastProduct, loadDemo } from '../lib/storage';
+import { COLORS } from '../lib/theme';
 
-const W = Dimensions.get('window').width;
-
-export default function ForecastScreen() {
-  const [skus, setSkus] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
-  const [forecast, setForecast] = useState(null);
-  const [loading, setLoading] = useState(false);
+export default function ForecastScreen({ navigation }) {
+  const [products, setProducts] = useState([]);
 
   const refresh = useCallback(async () => {
-    const data = await loadSkus();
-    setSkus(data);
-    if (data.length && !selectedId) setSelectedId(data[0].id);
-  }, [selectedId]);
+    setProducts(await loadProducts());
+  }, []);
 
-  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', refresh);
+    refresh();
+    return unsub;
+  }, [navigation, refresh]);
 
-  const runForecast = async () => {
-    const sku = skus.find(s => s.id === selectedId);
-    if (!sku || !sku.history || sku.history.length < 3) {
-      setForecast({ error: 'Need at least 3 days of history. Enter daily sales first.' });
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await api.forecast({ history: sku.history, days: 14 });
-      setForecast(res);
-    } catch (e) {
-      setForecast({ error: 'Backend unreachable: ' + e.message });
-    }
-    setLoading(false);
-  };
-
-  const selected = skus.find(s => s.id === selectedId);
+  if (!products.length) {
+    return (
+      <View style={styles.empty}>
+        <Text style={styles.emptyIcon}>📈</Text>
+        <Text style={styles.emptyTitle}>No forecast available</Text>
+        <Text style={styles.emptySub}>
+          Add products and log a few days of sales to see ML-based predictions.
+        </Text>
+        <TouchableOpacity
+          style={styles.demoBtn}
+          onPress={async () => {
+            await loadDemo();
+            refresh();
+          }}
+        >
+          <Text style={styles.demoBtnText}>🎮 Load Demo Data</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
-      <Text style={styles.h1}>AI Forecast</Text>
-      <Text style={styles.sub}>7-day MA + linear trend · 90% CI · Server-computed</Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ padding: 14, paddingBottom: 40 }}
+    >
+      <View style={styles.headerCard}>
+        <Text style={styles.headerTitle}>📈 Demand Forecast</Text>
+        <Text style={styles.headerSub}>
+          Linear regression + 7-day moving average · 90% confidence interval
+        </Text>
+      </View>
 
-      <Text style={styles.label}>Select SKU</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-        {skus.map(s => (
-          <TouchableOpacity
-            key={s.id}
-            style={[styles.chip, selectedId === s.id && styles.chipActive]}
-            onPress={() => { setSelectedId(s.id); setForecast(null); }}
-          >
-            <Text style={[styles.chipText, selectedId === s.id && { color: '#fff' }]}>
-              {s.name.split(' ').slice(0, 2).join(' ')}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {products.map((p) => {
+        const f = forecastProduct(p);
+        const trendColor =
+          f.trend === 'up'
+            ? COLORS.red
+            : f.trend === 'down'
+            ? COLORS.green
+            : COLORS.ink2;
+        const trendIcon =
+          f.trend === 'up' ? '📈' : f.trend === 'down' ? '📉' : '➡️';
+        const trendLabel =
+          f.trend === 'up' ? 'Rising' : f.trend === 'down' ? 'Falling' : 'Stable';
+        const rec =
+          f.trend === 'up'
+            ? 'Increase next order — demand growing'
+            : f.trend === 'down'
+            ? 'Reduce next order — demand falling'
+            : 'Maintain current order quantity';
 
-      <TouchableOpacity style={styles.runBtn} onPress={runForecast} disabled={loading}>
-        <Text style={styles.runBtnText}>{loading ? 'Computing...' : '🤖 Generate 14-day forecast'}</Text>
-      </TouchableOpacity>
-
-      {loading && <ActivityIndicator size="large" color="#3B82F6" style={{ marginTop: 20 }} />}
-
-      {forecast?.error && (
-        <View style={styles.errorCard}>
-          <Text style={styles.errorText}>{forecast.error}</Text>
-        </View>
-      )}
-
-      {forecast && !forecast.error && (
-        <>
-          <View style={styles.statRow}>
-            <Stat label="7-day MA" value={forecast.moving_avg} />
-            <Stat label="Trend slope" value={forecast.trend_slope.toFixed(3)} />
-            <Stat label="History" value={forecast.history_size + 'd'} />
-          </View>
-
-          <Text style={styles.chartTitle}>Next 14 Days</Text>
-          <LineChart
-            data={{
-              labels: forecast.forecast.map((f, i) => (i % 3 === 0 ? 'D' + f.day : '')),
-              datasets: [
-                { data: forecast.forecast.map(f => f.predicted), color: () => '#3B82F6', strokeWidth: 2 },
-                { data: forecast.forecast.map(f => f.upper_90), color: () => 'rgba(59,130,246,0.3)', strokeWidth: 1 },
-                { data: forecast.forecast.map(f => f.lower_90), color: () => 'rgba(59,130,246,0.3)', strokeWidth: 1 },
-              ],
-            }}
-            width={W - 32}
-            height={200}
-            chartConfig={{
-              backgroundColor: '#121829',
-              backgroundGradientFrom: '#121829',
-              backgroundGradientTo: '#121829',
-              decimalPlaces: 1,
-              color: (o = 1) => `rgba(148,163,184,${o})`,
-              labelColor: () => '#64748B',
-              propsForDots: { r: '2.5' },
-              propsForBackgroundLines: { stroke: '#1E293B' },
-            }}
-            bezier
-            style={{ borderRadius: 10, marginVertical: 8 }}
-          />
-
-          <Text style={styles.chartTitle}>Forecast Table</Text>
-          {forecast.forecast.slice(0, 7).map(f => (
-            <View key={f.day} style={styles.frow}>
-              <Text style={styles.fday}>Day {f.day}</Text>
-              <Text style={styles.fval}>{f.predicted}</Text>
-              <Text style={styles.fci}>CI: {f.lower_90}–{f.upper_90}</Text>
+        return (
+          <View key={p.id} style={styles.card}>
+            <View style={styles.cardTop}>
+              <Text style={styles.icon}>{p.ico || '📦'}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.name}>{p.name}</Text>
+                <Text style={styles.subText}>
+                  {p.history?.length || 0} days of history
+                </Text>
+              </View>
+              <Text style={[styles.trendBadge, { color: trendColor }]}>
+                {trendIcon} {trendLabel}
+              </Text>
             </View>
-          ))}
-        </>
-      )}
+
+            <View style={styles.statsGrid}>
+              <View style={styles.stat}>
+                <Text style={styles.statLabel}>Next Day</Text>
+                <Text style={[styles.statValue, { color: COLORS.purple }]}>
+                  {f.forecast}
+                </Text>
+                <Text style={styles.statHint}>±{f.ci} units</Text>
+              </View>
+              <View style={styles.stat}>
+                <Text style={styles.statLabel}>R² Model Fit</Text>
+                <Text
+                  style={[
+                    styles.statValue,
+                    {
+                      color:
+                        f.accuracy >= 70
+                          ? COLORS.green
+                          : f.accuracy >= 40
+                          ? COLORS.amber
+                          : COLORS.red,
+                    },
+                  ]}
+                >
+                  {f.accuracy}%
+                </Text>
+                <Text style={styles.statHint}>
+                  {f.accuracy >= 70
+                    ? 'High confidence'
+                    : f.accuracy >= 40
+                    ? 'Moderate'
+                    : 'Low — need more data'}
+                </Text>
+              </View>
+              <View style={styles.stat}>
+                <Text style={styles.statLabel}>7-day Avg</Text>
+                <Text style={[styles.statValue, { color: COLORS.blue }]}>
+                  {f.ma7}
+                </Text>
+                <Text style={styles.statHint}>units/day</Text>
+              </View>
+              <View style={styles.stat}>
+                <Text style={styles.statLabel}>Trend %</Text>
+                <Text style={[styles.statValue, { color: trendColor }]}>
+                  {f.trend === 'up' ? '+' : f.trend === 'down' ? '−' : ''}
+                  {f.trendPct}%
+                </Text>
+                <Text style={styles.statHint}>vs baseline</Text>
+              </View>
+            </View>
+
+            <View style={styles.recBox}>
+              <Text style={styles.recLabel}>Recommendation</Text>
+              <Text style={styles.recText}>{rec}</Text>
+            </View>
+          </View>
+        );
+      })}
+
+      <Text style={styles.footnote}>
+        Forecasts improve with more sales history. Log sales daily for best
+        results. The model uses ordinary least-squares regression with a 7-day
+        moving-average blend (60/40 weighting).
+      </Text>
     </ScrollView>
   );
 }
 
-function Stat({ label, value }) {
-  return (
-    <View style={styles.stat}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statVal}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0B0F1A', padding: 16 },
-  h1: { color: '#E2E8F0', fontSize: 22, fontWeight: '800' },
-  sub: { color: '#64748B', fontSize: 12, marginTop: 2, marginBottom: 16 },
-  label: { color: '#94A3B8', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 },
-  chip: { backgroundColor: '#121829', borderWidth: 1, borderColor: '#1E293B', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, marginRight: 8 },
-  chipActive: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
-  chipText: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
-  runBtn: { backgroundColor: '#3B82F6', padding: 13, borderRadius: 10, alignItems: 'center' },
-  runBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  errorCard: { backgroundColor: '#F59E0B20', borderWidth: 1, borderColor: '#F59E0B', padding: 12, borderRadius: 8, marginTop: 14 },
-  errorText: { color: '#F59E0B', fontSize: 12.5 },
-  statRow: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  stat: { flex: 1, backgroundColor: '#121829', padding: 10, borderRadius: 8 },
-  statLabel: { color: '#64748B', fontSize: 10, textTransform: 'uppercase' },
-  statVal: { color: '#E2E8F0', fontSize: 17, fontWeight: '700', marginTop: 2 },
-  chartTitle: { color: '#E2E8F0', fontSize: 14, fontWeight: '700', marginTop: 18, marginBottom: 6 },
-  frow: { flexDirection: 'row', backgroundColor: '#121829', padding: 10, borderRadius: 6, marginBottom: 4, alignItems: 'center' },
-  fday: { color: '#94A3B8', width: 60, fontSize: 12 },
-  fval: { color: '#E2E8F0', fontWeight: '700', width: 50, fontSize: 13 },
-  fci: { color: '#64748B', flex: 1, textAlign: 'right', fontSize: 11 },
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  empty: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 30,
+  },
+  emptyIcon: { fontSize: 56, marginBottom: 12 },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.ink,
+    marginBottom: 6,
+  },
+  emptySub: {
+    fontSize: 13,
+    color: COLORS.muted,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  demoBtn: {
+    backgroundColor: COLORS.surface,
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+  },
+  demoBtnText: { color: COLORS.ink2, fontWeight: '700', fontSize: 13 },
+  headerCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    marginBottom: 12,
+  },
+  headerTitle: { fontSize: 14, fontWeight: '800', color: COLORS.ink },
+  headerSub: {
+    fontSize: 11,
+    color: COLORS.muted,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  card: {
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    marginBottom: 10,
+  },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  icon: { fontSize: 26 },
+  name: { fontSize: 13, fontWeight: '700', color: COLORS.ink },
+  subText: { fontSize: 10, color: COLORS.muted, fontWeight: '600', marginTop: 2 },
+  trendBadge: { fontSize: 11, fontWeight: '700' },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 12,
+    gap: 8,
+  },
+  stat: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: COLORS.bg,
+    padding: 10,
+    borderRadius: 8,
+  },
+  statLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: COLORS.muted,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  statValue: { fontSize: 22, fontWeight: '800', marginTop: 2 },
+  statHint: { fontSize: 9, color: COLORS.muted, fontWeight: '600', marginTop: 2 },
+  recBox: {
+    marginTop: 12,
+    backgroundColor: COLORS.blueLight,
+    padding: 10,
+    borderRadius: 8,
+  },
+  recLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: COLORS.blue,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+  recText: { fontSize: 12, fontWeight: '700', color: COLORS.ink },
+  footnote: {
+    fontSize: 10,
+    color: COLORS.muted,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 20,
+    lineHeight: 16,
+  },
 });
