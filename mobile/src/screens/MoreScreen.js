@@ -1,9 +1,7 @@
 /**
- * More Screen
- *
- * Settings, cloud sync, backup/restore, danger zone, and patent status.
- * Mirrors the layout of the web build's "More" tab so users moving
- * between web and APK see the same options.
+ * More Screen — settings, sync, backup, danger zone.
+ * Cross-platform safe: no Alert.prompt (iOS-only), uses a Modal+TextInput
+ * for input dialogs that work on both Android and iOS.
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -14,6 +12,7 @@ import {
   TouchableOpacity,
   Alert,
   Modal,
+  TextInput,
   Linking,
 } from 'react-native';
 import {
@@ -23,7 +22,12 @@ import {
   loadSyncHistory,
   restoreSnapshot,
 } from '../lib/storage';
-import { syncToCloud, restoreFromCloud, isConfigured, getLastSyncTime } from '../lib/supabase';
+import {
+  syncToCloud,
+  restoreFromCloud,
+  isConfigured,
+  getLastSyncTime,
+} from '../lib/supabase';
 import { COLORS } from '../lib/theme';
 
 export default function MoreScreen({ navigation }) {
@@ -31,11 +35,17 @@ export default function MoreScreen({ navigation }) {
   const [lastSync, setLastSync] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState([]);
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreInput, setRestoreInput] = useState('');
 
   const refresh = useCallback(async () => {
-    setDeviceId(await getDeviceId());
-    setLastSync(await getLastSyncTime());
-    setHistory(await loadSyncHistory());
+    try {
+      setDeviceId(await getDeviceId());
+      setLastSync(await getLastSyncTime());
+      setHistory(await loadSyncHistory());
+    } catch (e) {
+      console.warn('MoreScreen refresh failed', e);
+    }
   }, []);
 
   useEffect(() => {
@@ -45,47 +55,60 @@ export default function MoreScreen({ navigation }) {
   }, [navigation, refresh]);
 
   const doSync = async () => {
-    const result = await syncToCloud();
-    if (!result.ok) {
-      Alert.alert('Sync failed', result.reason || 'Unknown error');
-      return;
+    try {
+      const result = await syncToCloud();
+      if (!result || !result.ok) {
+        Alert.alert('Sync failed', (result && result.reason) || 'Unknown error');
+        return;
+      }
+      Alert.alert(
+        'Synced',
+        result.mode === 'cloud'
+          ? `Pushed ${result.count} products to cloud.`
+          : `Saved a local snapshot of ${result.count} products. Configure Supabase URL/key in src/lib/supabase.js for cross-device sync.`
+      );
+      refresh();
+    } catch (e) {
+      Alert.alert('Sync error', String(e?.message || e));
     }
-    Alert.alert(
-      '✅ Synced',
-      result.mode === 'cloud'
-        ? `Pushed ${result.count} products to cloud.`
-        : `Saved a local snapshot of ${result.count} products. Configure Supabase URL/key in src/lib/supabase.js for cross-device sync.`,
-    );
-    refresh();
   };
 
-  const doRestore = () => {
-    Alert.prompt(
-      'Restore from cloud',
-      'Enter Device ID to pull from (leave blank to use this device):',
-      async (input) => {
-        const target = (input || '').trim();
-        const result = await restoreFromCloud(target);
-        if (!result.ok) {
-          Alert.alert('Restore failed', result.reason);
-          return;
-        }
-        Alert.alert(
-          '✅ Restored',
-          `Pulled ${result.count} products${
-            result.timestamp
-              ? ` from ${new Date(result.timestamp).toLocaleString()}`
-              : ''
-          }.`,
-        );
-        refresh();
-      },
-    );
+  // Cross-platform restore: open a Modal with a TextInput instead of Alert.prompt
+  const openRestoreDialog = () => {
+    setRestoreInput('');
+    setRestoreOpen(true);
+  };
+
+  const submitRestore = async () => {
+    const target = (restoreInput || '').trim();
+    setRestoreOpen(false);
+    try {
+      const result = await restoreFromCloud(target);
+      if (!result || !result.ok) {
+        Alert.alert('Restore failed', (result && result.reason) || 'Unknown error');
+        return;
+      }
+      Alert.alert(
+        'Restored',
+        `Pulled ${result.count} products${
+          result.timestamp
+            ? ' from ' + new Date(result.timestamp).toLocaleString()
+            : ''
+        }.`
+      );
+      refresh();
+    } catch (e) {
+      Alert.alert('Restore error', String(e?.message || e));
+    }
   };
 
   const showHistory = async () => {
-    setHistory(await loadSyncHistory());
-    setHistoryOpen(true);
+    try {
+      setHistory(await loadSyncHistory());
+      setHistoryOpen(true);
+    } catch (e) {
+      Alert.alert('Could not load history', String(e?.message || e));
+    }
   };
 
   const doRestoreSnapshot = (idx) => {
@@ -94,10 +117,14 @@ export default function MoreScreen({ navigation }) {
       {
         text: 'Restore',
         onPress: async () => {
-          await restoreSnapshot(idx);
-          setHistoryOpen(false);
-          Alert.alert('✅ Restored', 'App state rolled back.');
-          refresh();
+          try {
+            await restoreSnapshot(idx);
+            setHistoryOpen(false);
+            Alert.alert('Restored', 'App state rolled back.');
+            refresh();
+          } catch (e) {
+            Alert.alert('Restore failed', String(e?.message || e));
+          }
         },
       },
     ]);
@@ -109,9 +136,13 @@ export default function MoreScreen({ navigation }) {
       {
         text: 'Load Demo',
         onPress: async () => {
-          await loadDemo();
-          Alert.alert('✅ Demo loaded', '12 products loaded.');
-          refresh();
+          try {
+            await loadDemo();
+            Alert.alert('Demo loaded', '12 products loaded.');
+            refresh();
+          } catch (e) {
+            Alert.alert('Could not load demo', String(e?.message || e));
+          }
         },
       },
     ]);
@@ -127,18 +158,36 @@ export default function MoreScreen({ navigation }) {
           text: 'Clear Everything',
           style: 'destructive',
           onPress: async () => {
-            await clearAllData();
-            Alert.alert('✅ Cleared', 'All data removed.');
-            refresh();
-            navigation.navigate('Home');
+            try {
+              await clearAllData();
+              Alert.alert('Cleared', 'All data removed.');
+              refresh();
+              navigation.navigate('Home');
+            } catch (e) {
+              Alert.alert('Could not clear', String(e?.message || e));
+            }
           },
         },
-      ],
+      ]
     );
   };
 
+  const openDashboard = async () => {
+    const url = 'https://bala-shunmugam-m.github.io/Inventory_IQ_app/dashboard.html';
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('Could not open', 'No browser available to open the URL.');
+      }
+    } catch (e) {
+      Alert.alert('Could not open', String(e?.message || e));
+    }
+  };
+
   const lastSyncLabel = lastSync
-    ? `Last synced: ${new Date(lastSync).toLocaleString()}`
+    ? 'Last synced: ' + new Date(lastSync).toLocaleString()
     : isConfigured()
     ? 'Tap to sync to cloud'
     : 'Local snapshot mode (no cloud configured)';
@@ -148,10 +197,9 @@ export default function MoreScreen({ navigation }) {
       style={styles.container}
       contentContainerStyle={{ padding: 14, paddingBottom: 40 }}
     >
-      {/* Device ID card */}
       <View style={styles.devCard}>
         <Text style={styles.devLabel}>YOUR DEVICE ID</Text>
-        <Text style={styles.devId}>{deviceId}</Text>
+        <Text style={styles.devId}>{deviceId || 'Loading...'}</Text>
         <Text style={styles.devHint}>
           Share this ID across devices to sync data
         </Text>
@@ -160,26 +208,20 @@ export default function MoreScreen({ navigation }) {
       <Text style={styles.sectionLabel}>DATA</Text>
 
       <SettingItem
-        icon="☁️"
-        bg={COLORS.blueLight}
         title="Sync to Cloud"
         sub={lastSyncLabel}
         onPress={doSync}
       />
       <SettingItem
-        icon="🔄"
-        bg={COLORS.greenLight}
         title="Restore from Cloud"
         sub="Pull data from another device"
-        onPress={doRestore}
+        onPress={openRestoreDialog}
       />
       <SettingItem
-        icon="⏪"
-        bg={COLORS.amberLight}
         title="Undo Last Sync"
         sub={
           history.length
-            ? `${history.length} saved state${history.length !== 1 ? 's' : ''} — tap to view`
+            ? history.length + ' saved state' + (history.length !== 1 ? 's' : '') + ' - tap to view'
             : 'No sync history yet'
         }
         onPress={showHistory}
@@ -188,35 +230,25 @@ export default function MoreScreen({ navigation }) {
       <Text style={styles.sectionLabel}>APP</Text>
 
       <SettingItem
-        icon="🎮"
-        bg={COLORS.greenLight}
         title="Load Demo Data"
         sub="12 realistic FMCG products"
         onPress={doDemo}
       />
       <SettingItem
-        icon="🌐"
-        bg={COLORS.blueLight}
         title="Open Web Dashboard"
         sub="View desktop manager dashboard"
-        onPress={() =>
-          Linking.openURL(
-            'https://bala-shunmugam-m.github.io/Inventory_IQ_app/dashboard.html',
-          )
-        }
+        onPress={openDashboard}
       />
 
       <Text style={styles.sectionLabel}>PATENT</Text>
 
       <SettingItem
-        icon="🔬"
-        bg={COLORS.purpleLight}
         title="Patent Status"
-        sub="6 innovations · DSE · VCR · PAP · EnergyGuard · FieldLock · SHA-256"
+        sub="6 innovations - DSE - VCR - PAP - EnergyGuard - FieldLock - SHA-256"
         onPress={() =>
           Alert.alert(
             'Patent Innovations',
-            '1. DSE — Differential Sync Engine\n2. VCR — Vector Clock Resolver\n3. PAP — Predictive Analytics Pre-fetcher\n4. EnergyGuard — Battery-aware Scheduler\n5. FieldLock — Field-level Concurrency Lock\n6. SHA-256 — Cryptographic Integrity Hash\n\nAll 6 innovations active in this build.',
+            '1. DSE - Differential Sync Engine\n2. VCR - Vector Clock Resolver\n3. PAP - Predictive Analytics Pre-fetcher\n4. EnergyGuard - Battery-aware Scheduler\n5. FieldLock - Field-level Concurrency Lock\n6. SHA-256 - Cryptographic Integrity Hash\n\nAll 6 innovations active in this build.'
           )
         }
       />
@@ -224,8 +256,6 @@ export default function MoreScreen({ navigation }) {
       <Text style={[styles.sectionLabel, { color: COLORS.red }]}>DANGER ZONE</Text>
 
       <SettingItem
-        icon="🗑️"
-        bg={COLORS.redLight}
         title="Clear All Data"
         sub="Delete all products and history"
         titleColor={COLORS.red}
@@ -233,9 +263,49 @@ export default function MoreScreen({ navigation }) {
       />
 
       <Text style={styles.footer}>
-        InventoryIQ v8.1 — Patent Edition{'\n'}
-        6 innovations · SHA-256 · VCR · DSE · PAP · EnergyGuard · FieldLock
+        InventoryIQ v8.1 - Patent Edition{'\n'}
+        6 innovations - SHA-256 - VCR - DSE - PAP - EnergyGuard - FieldLock
       </Text>
+
+      {/* Cross-platform Restore-from-cloud dialog */}
+      <Modal
+        visible={restoreOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRestoreOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>Restore from cloud</Text>
+            <Text style={styles.modalSub}>
+              Enter Device ID to pull from (leave blank to use this device).
+            </Text>
+            <TextInput
+              style={styles.input}
+              value={restoreInput}
+              onChangeText={setRestoreInput}
+              placeholder="IQ-XXXXX-XXXXX"
+              placeholderTextColor={COLORS.muted}
+              autoCapitalize="characters"
+              autoCorrect={false}
+            />
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                onPress={() => setRestoreOpen(false)}
+              >
+                <Text style={styles.modalBtnCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnPrimary]}
+                onPress={submitRestore}
+              >
+                <Text style={styles.modalBtnPrimaryText}>Restore</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* History modal */}
       <Modal
@@ -246,11 +316,11 @@ export default function MoreScreen({ navigation }) {
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modal}>
-            <Text style={styles.modalTitle}>⏪ Sync History</Text>
+            <Text style={styles.modalTitle}>Sync History</Text>
             <Text style={styles.modalSub}>Restore to any saved state</Text>
             {history.length === 0 ? (
               <Text style={styles.noHist}>
-                No sync history yet — push to cloud first.
+                No sync history yet - push to cloud first.
               </Text>
             ) : (
               <ScrollView style={{ maxHeight: 320 }}>
@@ -266,7 +336,8 @@ export default function MoreScreen({ navigation }) {
                             Sync #{history.length - i}
                           </Text>
                           <Text style={styles.histMeta}>
-                            {new Date(h.ts).toLocaleString()} · {h.count} products
+                            {new Date(h.ts).toLocaleString()} - {h.count}{' '}
+                            products
                           </Text>
                         </View>
                         <TouchableOpacity
@@ -293,19 +364,16 @@ export default function MoreScreen({ navigation }) {
   );
 }
 
-function SettingItem({ icon, bg, title, sub, onPress, titleColor }) {
+function SettingItem({ title, sub, onPress, titleColor }) {
   return (
-    <TouchableOpacity style={styles.row} onPress={onPress}>
-      <View style={[styles.rowIco, { backgroundColor: bg }]}>
-        <Text style={{ fontSize: 18 }}>{icon}</Text>
-      </View>
+    <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
       <View style={{ flex: 1 }}>
         <Text style={[styles.rowTitle, titleColor && { color: titleColor }]}>
           {title}
         </Text>
         <Text style={styles.rowSub}>{sub}</Text>
       </View>
-      <Text style={styles.rowArrow}>›</Text>
+      <Text style={styles.rowArrow}>{'>'}</Text>
     </TouchableOpacity>
   );
 }
@@ -329,7 +397,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
     fontWeight: '700',
-    fontFamily: Platform_select_monospace(),
     letterSpacing: 0.5,
   },
   devHint: {
@@ -358,13 +425,6 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 6,
   },
-  rowIco: {
-    width: 36,
-    height: 36,
-    borderRadius: 9,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   rowTitle: { fontSize: 12, fontWeight: '700', color: COLORS.ink },
   rowSub: { fontSize: 10, color: COLORS.muted, fontWeight: '600', marginTop: 2 },
   rowArrow: { fontSize: 16, color: COLORS.muted },
@@ -385,6 +445,27 @@ const styles = StyleSheet.create({
   modal: { backgroundColor: COLORS.white, borderRadius: 14, padding: 18 },
   modalTitle: { fontSize: 16, fontWeight: '800', color: COLORS.ink },
   modalSub: { fontSize: 11, color: COLORS.muted, marginTop: 2, marginBottom: 12 },
+  input: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    padding: 11,
+    fontSize: 13,
+    backgroundColor: COLORS.bg,
+    color: COLORS.ink,
+    marginBottom: 14,
+  },
+  modalBtnRow: { flexDirection: 'row', gap: 8 },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  modalBtnCancel: { backgroundColor: COLORS.surface },
+  modalBtnCancelText: { color: COLORS.ink2, fontWeight: '700', fontSize: 13 },
+  modalBtnPrimary: { backgroundColor: COLORS.ink },
+  modalBtnPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   noHist: { padding: 20, textAlign: 'center', color: COLORS.muted, fontSize: 12 },
   histRow: {
     flexDirection: 'row',
@@ -411,9 +492,3 @@ const styles = StyleSheet.create({
   },
   closeBtnText: { color: COLORS.ink2, fontWeight: '700', fontSize: 13 },
 });
-
-function Platform_select_monospace() {
-  // RN doesn't have a portable monospace family without importing Platform;
-  // 'monospace' falls back gracefully on both iOS and Android.
-  return 'monospace';
-}
