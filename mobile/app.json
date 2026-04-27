@@ -4,14 +4,13 @@
     "slug": "inventoryiq",
     "version": "8.1.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
       "resizeMode": "contain",
       "backgroundColor": "#0D1226"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.balashunmugam.inventoryiq"
@@ -24,13 +23,13 @@
       }
     },
     "web": {
-      "bundler": "metro"
+      "favicon": "./assets/favicon.png"
     },
+    "plugins": [],
     "extra": {
       "eas": {
-        "projectId": "eeb9e8d5-34df-4531-b9b3-61e9dbd7ead1"
+        "projectId": "your-project-id-here"
       }
-    },
-    "owner": "ruthra_2004"
+    }
   }
 }
