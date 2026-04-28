@@ -7,6 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#0D1226"
     },
@@ -19,17 +20,13 @@
       "package": "com.balashunmugam.inventoryiq",
       "versionCode": 8,
       "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#2563EB"
       }
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [],
-    "extra": {
-      "eas": {
-        "projectId": "your-project-id-here"
-      }
-    }
+    "plugins": []
   }
 }
