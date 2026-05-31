@@ -1,0 +1,7 @@
+name = "inventoryiq-llm-proxy"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+account_id = "3ff2aa59d592dda71799cca963c855a9"
+
+# Secret (do NOT put the key here — set it with:  wrangler secret put GROQ_API_KEY)
+# The key is then available as env.GROQ_API_KEY inside worker.js

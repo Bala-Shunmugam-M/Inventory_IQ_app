@@ -1,0 +1,90 @@
+<!--
+  InventoryIQ — Universal AI Advisor (Groq LLM)  ·  drop-in snippet
+  ───────────────────────────────────────────────────────────────
+  Paste this entire block just BEFORE </body> in ANY InventoryIQ HTML
+  build (dashboard.html, InventoryIQ_v8_Complete_App.html, PATENT_*.html,
+  docs/index.html, etc). It is fully self-contained:
+
+    • Adds a floating "🤖 AI Advisor" button (bottom-right).
+    • Reads products from the shared localStorage key 'inventoryiq_v8_data'
+      (the same key every build uses) — so it needs no internal variables.
+    • Calls Groq, shows root causes + recommendations + per-team briefs.
+
+  SETUP: paste your Groq key into AI_CFG.apiKey below (or set AI_CFG.proxy
+  to your Cloudflare Worker URL to keep the key off the page). Switch
+  provider by changing baseUrl + model (any OpenAI-compatible endpoint).
+-->
+<script>
+(function(){
+  var AI_CFG = {
+    baseUrl: 'https://api.groq.com/openai/v1',
+    model:   'llama-3.3-70b-versatile',
+    apiKey:  '',   // ← paste Groq key (gsk_...)  — or leave empty and set proxy
+    proxy:   '',   // ← e.g. 'https://inventoryiq-llm-proxy.you.workers.dev'
+    storageKey: 'inventoryiq_v8_data'
+  };
+  var SYS='You are InventoryIQ AI, a senior inventory and supply-chain analyst for a retail/FMCG store. '
+   +'You receive pre-computed inventory analytics and produce ACTIONABLE guidance for three teams that share '
+   +'this data: Procurement, Warehouse Operations, and Finance/Analytics. Respond in VALID JSON ONLY (no '
+   +'markdown) with schema: {"risk_summary":"...","at_risk_skus":[{"sku":"...","issue":"stockout_imminent|'
+   +'overstock|dead_stock|margin_risk|demand_spike","days_cover":null,"confidence":0,"explanation":"..."}],'
+   +'"recommendations":[{"action":"...","owner":"procurement|warehouse_ops|finance_analytics","expected_effect":'
+   +'"...","priority":1,"risk":"low|medium|high"}],"team_briefs":{"procurement":["..."],"warehouse_ops":["..."],'
+   +'"finance_analytics":["..."]},"forecast_narrative":"..."}. At least 2 at_risk_skus when risk exists and at '
+   +'least 3 recommendations. Use the real product names/numbers given. Never use markdown.';
+
+  function esc(s){return String(s==null?'':s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+  function getProds(){try{var r=localStorage.getItem(AI_CFG.storageKey);var a=r?JSON.parse(r):[];return Array.isArray(a)?a:(a.data||[]);}catch(e){return [];}}
+  function payload(){var rank={critical:0,order:1,watch:2,good:3};
+    var skus=getProds().map(function(p){var dd=p.forecast||p.demand||1;return {name:p.name,class:p.cls,status:p.status,stock:p.stock,reorder_point:p.rop,eoq:p.eoq,lead_time_days:p.lead,days_cover:dd>0?Math.round(p.stock/dd*10)/10:null,cost:p.cost,sell:p.sell,margin_pct:p.sell>0?Math.round((p.sell-p.cost)/p.sell*100):0,forecast_next_day:p.forecast||null,forecast_trend:p.trend||null};})
+    .sort(function(a,b){return (rank[a.status]||9)-(rank[b.status]||9);});
+    return {total_skus:skus.length,skus:skus.slice(0,25)};}
+  function strip(t){t=(t||'').trim();if(t.indexOf('```')===0)t=t.replace(/^```(json)?/i,'').replace(/```$/,'').trim();var s=t.indexOf('{'),e=t.lastIndexOf('}');return s<0||e<0?t:t.slice(s,e+1);}
+
+  // UI
+  var btn=document.createElement('button');
+  btn.textContent='🤖 AI Advisor';
+  btn.style.cssText='position:fixed;right:20px;bottom:20px;z-index:99998;padding:12px 18px;border:none;border-radius:30px;background:#7C3AED;color:#fff;font-weight:800;font-size:14px;box-shadow:0 6px 20px rgba(124,58,237,.4);cursor:pointer';
+  document.body.appendChild(btn);
+
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(8,11,22,.6);display:none;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML='<div style="background:#0C0F1A;border:1px solid #283250;border-radius:16px;max-width:560px;width:100%;max-height:86vh;overflow:auto;padding:18px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:16px;font-weight:800;color:#fff">🤖 AI Advisor</span><span id="aiAdvClose" style="cursor:pointer;color:#94a3b8;font-size:22px">×</span></div>'
+    +'<button id="aiAdvRun" style="width:100%;margin-top:12px;padding:13px;border:none;border-radius:10px;background:#7C3AED;color:#fff;font-weight:800;font-size:14px;cursor:pointer">✨ Run AI Analysis</button>'
+    +'<div id="aiAdvOut" style="margin-top:12px"></div></div>';
+  document.body.appendChild(ov);
+
+  btn.onclick=function(){ov.style.display='flex';};
+  ov.onclick=function(e){if(e.target===ov)ov.style.display='none';};
+  document.getElementById('aiAdvClose').onclick=function(){ov.style.display='none';};
+
+  document.getElementById('aiAdvRun').onclick=function(){
+    var out=document.getElementById('aiAdvOut'),b=document.getElementById('aiAdvRun');
+    if(!getProds().length){out.innerHTML='<div style="color:#F59E0B;font-size:12px">No products found. Load data first.</div>';return;}
+    if(!AI_CFG.proxy && (!AI_CFG.apiKey||AI_CFG.apiKey.indexOf('PASTE')>=0)){out.innerHTML='<div style="color:#F59E0B;font-size:12px">Set AI_CFG.apiKey or AI_CFG.proxy in this snippet, then reload.</div>';return;}
+    b.disabled=true;b.textContent='⏳ Analyzing…';out.innerHTML='';
+    var url=AI_CFG.proxy?AI_CFG.proxy.replace(/\/$/,''):AI_CFG.baseUrl+'/chat/completions';
+    var hd={'Content-Type':'application/json'};if(!AI_CFG.proxy)hd.Authorization='Bearer '+AI_CFG.apiKey;
+    fetch(url,{method:'POST',headers:hd,body:JSON.stringify({model:AI_CFG.model,temperature:0.3,max_tokens:1800,messages:[{role:'system',content:SYS},{role:'user',content:'Analyze this inventory snapshot and return the diagnostic JSON.\n'+JSON.stringify(payload(),null,2)}]})})
+     .then(function(r){return r.text().then(function(t){if(!r.ok)throw new Error('Provider '+r.status+': '+t.slice(0,160));return t;});})
+     .then(function(t){var j=JSON.parse(t);var c=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'';render(JSON.parse(strip(c)));})
+     .catch(function(err){out.innerHTML='<div style="color:#F43F5E;font-size:12px">'+esc(err.message)+'</div>';})
+     .then(function(){b.disabled=false;b.textContent='↻ Re-run AI Analysis';});
+  };
+
+  function render(d){
+    var out=document.getElementById('aiAdvOut'),h='';
+    var card='background:#161B2E;border:1px solid #283250;border-radius:10px;padding:12px;margin-bottom:8px';
+    if(d.risk_summary)h+='<div style="'+card+';background:#1E1640"><div style="font-size:9px;font-weight:800;color:#A78BFA">RISK SUMMARY</div><div style="font-size:12px;color:#E5E7EB;margin-top:4px;line-height:18px">'+esc(d.risk_summary)+'</div></div>';
+    if(d.at_risk_skus&&d.at_risk_skus.length){h+='<div style="font-size:11px;font-weight:800;color:#cbd5e1;margin:8px 0">At-Risk Products</div>';
+      d.at_risk_skus.forEach(function(s){h+='<div style="'+card+'"><div style="display:flex;justify-content:space-between"><span style="font-size:12px;font-weight:700;color:#fff">'+esc(s.sku)+'</span><span style="font-size:10px;color:#94a3b8">'+(s.confidence!=null?s.confidence+'% conf.':'')+'</span></div><div style="font-size:11px;color:#F87171;font-weight:700;margin-top:3px">'+esc(s.issue)+(s.days_cover!=null?' · '+s.days_cover+'d cover':'')+'</div><div style="font-size:11px;color:#cbd5e1;margin-top:3px">'+esc(s.explanation)+'</div></div>';});}
+    if(d.recommendations&&d.recommendations.length){h+='<div style="font-size:11px;font-weight:800;color:#cbd5e1;margin:8px 0">Recommended Actions</div>';
+      d.recommendations.slice().sort(function(a,b){return (a.priority||9)-(b.priority||9);}).forEach(function(r){var rc=r.risk==='high'?'#F43F5E':r.risk==='medium'?'#F59E0B':'#10B981';h+='<div style="'+card+'"><div style="font-size:12px;font-weight:700;color:#fff">P'+(r.priority||'-')+' · '+esc(r.action)+'</div>'+(r.expected_effect?'<div style="font-size:11px;color:#cbd5e1;margin-top:4px">→ '+esc(r.expected_effect)+'</div>':'')+'<div style="margin-top:6px;font-size:9px"><span style="color:#94a3b8;text-transform:uppercase;font-weight:800">'+esc((r.owner||'').replace('_',' '))+'</span> &nbsp;<span style="color:'+rc+';font-weight:700">'+esc(r.risk||'')+' risk</span></div></div>';});}
+    if(d.team_briefs){var teams=[['procurement','🛒 Procurement'],['warehouse_ops','🏬 Warehouse'],['finance_analytics','📊 Finance']];h+='<div style="font-size:11px;font-weight:800;color:#cbd5e1;margin:8px 0">Team Briefs</div>';
+      teams.forEach(function(t){var it=d.team_briefs[t[0]]||[];if(!it.length)return;h+='<div style="'+card+'"><div style="font-size:11px;font-weight:800;color:#60A5FA;margin-bottom:4px">'+t[1]+'</div>'+it.map(function(b){return '<div style="font-size:11px;color:#E5E7EB;line-height:18px">• '+esc(b)+'</div>';}).join('')+'</div>';});}
+    if(d.forecast_narrative)h+='<div style="'+card+';background:#10233E"><div style="font-size:9px;font-weight:800;color:#60A5FA">DEMAND OUTLOOK</div><div style="font-size:12px;color:#E5E7EB;margin-top:4px;line-height:18px">'+esc(d.forecast_narrative)+'</div></div>';
+    out.innerHTML=h||'<div style="color:#94a3b8;font-size:12px">No output.</div>';
+  }
+})();
+</script>
