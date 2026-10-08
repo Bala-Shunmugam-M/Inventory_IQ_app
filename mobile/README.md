@@ -12,7 +12,7 @@ mobile/
 └── src/
     ├── lib/
     │   ├── storage.js         ← AsyncStorage + engine: ROP, EOQ, ABC, forecast, ordering
-    │   ├── supabase.js        ← optional cloud sync (Supabase RPC, see ../supabase/schema.sql)
+    │   ├── cloud.js           ← optional cloud sync client for ../backend
     │   └── theme.js
     └── screens/
         ├── HomeScreen.js      ← today's actions: what to order
@@ -23,7 +23,7 @@ mobile/
 ```
 
 Everything runs on the device and works offline. Cloud sync is off until you
-fill in `SUPABASE_URL` / `SUPABASE_KEY` in `src/lib/supabase.js`.
+set `API_BASE` in `src/lib/cloud.js` to your deployed backend URL.
 
 ## Run
 

@@ -1,12 +1,12 @@
 /**
  * Forecast Screen
  *
- * Per-product demand prediction. Uses linear regression on the
- * recent sales history blended with a 7-day moving average:
- *   forecast = 0.6 × LinReg(next) + 0.4 × MA7
+ * Per-product demand prediction: a trend line over recent sales history
+ * blended with a 7-day moving average:
+ *   forecast = 0.6 × Trend(next) + 0.4 × MA7
  *
- * Shows R² (model fit), 90% confidence interval, trend direction,
- * and a recommendation for the next order.
+ * Shows forecast accuracy (backtest: 1 − WAPE on the last 7 logged days),
+ * a 90% range, trend per week, and a recommendation for the next order.
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -61,7 +61,7 @@ export default function ForecastScreen({ navigation }) {
       <View style={styles.headerCard}>
         <Text style={styles.headerTitle}>📈 Demand Forecast</Text>
         <Text style={styles.headerSub}>
-          Linear regression + 7-day moving average · 90% confidence interval
+          Trend + 7-day moving average · 90% range
         </Text>
       </View>
 
@@ -108,28 +108,28 @@ export default function ForecastScreen({ navigation }) {
                 <Text style={styles.statHint}>±{f.ci} units</Text>
               </View>
               <View style={styles.stat}>
-                <Text style={styles.statLabel}>R² Model Fit</Text>
+                <Text style={styles.statLabel}>Accuracy</Text>
                 <Text
                   style={[
                     styles.statValue,
                     {
                       color:
-                        f.accuracy >= 70
+                        f.accuracy == null
+                          ? COLORS.ink2
+                          : f.accuracy >= 80
                           ? COLORS.green
-                          : f.accuracy >= 40
+                          : f.accuracy >= 60
                           ? COLORS.amber
                           : COLORS.red,
                     },
                   ]}
                 >
-                  {f.accuracy}%
+                  {f.accuracy == null ? '—' : `${f.accuracy}%`}
                 </Text>
                 <Text style={styles.statHint}>
-                  {f.accuracy >= 70
-                    ? 'High confidence'
-                    : f.accuracy >= 40
-                    ? 'Moderate'
-                    : 'Low — need more data'}
+                  {f.accuracy == null
+                    ? 'Needs 7 days of sales'
+                    : 'Last 7 days tested'}
                 </Text>
               </View>
               <View style={styles.stat}>
@@ -145,7 +145,7 @@ export default function ForecastScreen({ navigation }) {
                   {f.trend === 'up' ? '+' : f.trend === 'down' ? '−' : ''}
                   {f.trendPct}%
                 </Text>
-                <Text style={styles.statHint}>vs baseline</Text>
+                <Text style={styles.statHint}>per week</Text>
               </View>
             </View>
 
@@ -159,8 +159,9 @@ export default function ForecastScreen({ navigation }) {
 
       <Text style={styles.footnote}>
         Forecasts improve with more sales history. Log sales daily for best
-        results. The model uses ordinary least-squares regression with a 7-day
-        moving-average blend (60/40 weighting).
+        results. The model blends a least-squares trend with a 7-day moving
+        average (60/40). Accuracy = 1 − average % error when each of the last 7
+        logged days is forecast from the days before it.
       </Text>
     </ScrollView>
   );

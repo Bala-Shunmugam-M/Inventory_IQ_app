@@ -26,7 +26,7 @@ repo/
 │   └── src/
 │       ├── lib/
 │       │   ├── storage.js   ← engine: EOQ, ROP, ML, AsyncStorage
-│       │   ├── supabase.js  ← cloud sync (works offline too)
+│       │   ├── cloud.js     ← cloud sync client (works offline too)
 │       │   └── theme.js     ← shared design tokens
 │       └── screens/
 │           ├── HomeScreen.js
@@ -34,9 +34,8 @@ repo/
 │           ├── ProductsScreen.js
 │           ├── ForecastScreen.js
 │           └── MoreScreen.js
-├── proxy/                ← Cloudflare Worker that holds the Groq key for the AI Advisor
-├── supabase/schema.sql   ← cloud sync schema (run once in Supabase)
-├── tests/check.mjs       ← self-check: node tests/check.mjs
+├── backend/              ← Cloudflare Worker + D1: store sync API and the Groq-key proxy for the AI Advisor
+├── tests/                ← node tests/check.mjs · node tests/sync.mjs
 ├── .gitignore
 ├── README.md
 └── DEPLOY.md
@@ -64,7 +63,7 @@ All three use the same key namespace (`inventoryiq_v8_*`), so when you sync a ph
 - **Demand forecast** — linear regression blended with a 7-day moving average over daily sales.
 - **Ordering loop** — "Mark ordered" records incoming stock; tap the incoming badge (or Receive) when it arrives.
   Today's action list uses inventory position (on hand + on order), so ordered items stop nagging.
-- **Cloud sync** (optional) — full snapshot push/pull through Supabase, keyed by Device ID.
+- **Cloud sync** (optional) — versioned snapshot sync through `backend/`; devices join with a store link code.
 - **AI Advisor** — LLM explains the locally computed numbers; it never invents them.
 
 The patent filing describes further mechanisms (DSE delta sync, VCR vector-clock merge,
@@ -99,28 +98,27 @@ The APK link arrives by email in ~10 minutes.
 
 ## Cloud sync (optional)
 
-The app works fully offline. To enable cross-device sync:
+The app works fully offline. Cross-device sync uses the backend in `backend/` — one Cloudflare
+Worker + D1 database that also serves the AI Advisor. Deploy it (see `backend/README.md`), then:
 
-1. Create a free Supabase project at supabase.com
-2. Run this SQL once:
+1. Put the Worker URL in `IQ_API` in `docs/iq-core.js` (web + dashboard) and `API_BASE` in
+   `mobile/src/lib/cloud.js` (APK). It's the same URL as `AI_CFG.proxy`.
+2. Tap **Sync to Cloud** once. That creates your store and shows a **store link code** (`iq1:…`) in Settings.
+3. On another device: **Restore from Cloud** → paste the link code. That device now syncs the same store.
 
-Open `supabase/schema.sql`, paste it into Supabase → SQL Editor, and run it.
+If `IQ_API` is empty, **the app still works** — Sync to Cloud saves a snapshot on this device and says so.
 
-3. Paste your project URL and anon/publishable key into `IQ_CLOUD` in `docs/iq-core.js` (web) and `mobile/src/lib/supabase.js` (APK)
-
-4. Rebuild — sync now works across devices via Device ID.
-
-If the keys are left empty, **the app still works** — Sync to Cloud saves a snapshot on this device and says so.
-
-**Security:** the schema gives the anon key no direct table access; data is only reachable through
-`iq_push` / `iq_pull` with an exact Device ID. The Device ID is effectively the store's password —
-don't post it publicly. (Earlier versions of this README created policies that let anyone list every
-store's data; re-running `schema.sql` removes them.)
+**How it stays safe and consistent:** each store has a random 256-bit token (only its SHA-256 is stored
+server-side); the link code carries it, so treat the code like a password. Saves are versioned — if
+another device saved first, the server refuses the stale save, the app merges (union by product, this
+device wins on clashes, sales logs combined) and saves again, so nothing is silently overwritten.
 
 ## Checks
 
 ```bash
-node tests/check.mjs
+node tests/check.mjs        # inventory engine + data hygiene
+node tests/sync.mjs         # web client ⇄ real backend, end to end (in-memory SQLite)
+node backend/test/run.mjs   # backend API + AI proxy
 ```
 
 ---

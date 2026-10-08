@@ -21,6 +21,7 @@ import {
   loadDemo,
   markOrdered,
   needsAction,
+  orderQty,
 } from '../lib/storage';
 import { COLORS, STATUS_LABEL, STATUS_COLORS } from '../lib/theme';
 
@@ -170,7 +171,7 @@ export default function HomeScreen({ navigation }) {
             <View style={{ flex: 1 }}>
               <Text style={styles.actionName}>{p.name}</Text>
               <Text style={styles.actionMeta}>
-                Stock: {p.stock} · ROP: {p.rop} · Order {p.eoq} units
+                Stock: {p.stock} · ROP: {p.rop} · Order {orderQty(p)} units
                 {p.incoming > 0 ? ` · ${p.incoming} on order` : ''}
               </Text>
             </View>

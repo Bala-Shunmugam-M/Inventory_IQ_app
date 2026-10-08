@@ -49,27 +49,22 @@ Both are fully working, share data via `localStorage`, and have a "Open Mobile V
 
 The app works fully without this. Skip if you don't need cross-device sync yet.
 
-1. Create a project at supabase.com (free tier, no credit card)
+1. Deploy the backend with its D1 database — follow `backend/README.md` (or `DEPLOY_AI.md`).
 
-2. Open SQL Editor, paste the contents of `supabase/schema.sql` from this repo, and run it.
-   (Safe to re-run; it also removes the insecure policies older versions of this guide created.)
-
-3. Project Settings → API → copy your **Project URL** and **anon public key**
-
-4. Paste them in **two places**:
+2. Paste the Worker URL in **two places**:
 
    **`docs/iq-core.js`** (web + dashboard):
    ```js
-   var IQ_CLOUD = { url: 'https://YOUR-PROJECT.supabase.co', key: 'eyJhbGciOi…' };
+   var IQ_API = 'https://inventoryiq-llm-proxy.<you>.workers.dev';
    ```
 
-   **`mobile/src/lib/supabase.js`** (APK):
+   **`mobile/src/lib/cloud.js`** (APK):
    ```js
-   export const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
-   export const SUPABASE_KEY = 'eyJhbGciOi…';
+   export const API_BASE = 'https://inventoryiq-llm-proxy.<you>.workers.dev';
    ```
 
-5. Push again. Sync now works cross-device using Device ID.
+3. Push again. Tap Sync to Cloud once on your main device, then use its **store link code** (Settings)
+   to restore on other devices.
 
 ---
 
@@ -99,7 +94,7 @@ After deployment, test the round-trip:
 2. Open the dashboard URL in a second tab → same 12 products appear
 3. Add a product on the mobile site → refresh the dashboard → it shows up
 4. Delete a product on the dashboard → refresh the mobile site → gone
-5. On the APK: Settings → Restore from Cloud → enter your web Device ID → products pull down (only with Supabase configured)
+5. On the APK: Settings → Restore from Cloud → paste the web app's store link code → products pull down (only with the backend configured)
 
 If any of these fail, check the browser console — the keys to look for are `inventoryiq_v8_data` (products), `inventoryiq_v8_sales` (sales log), and `iq_device_id` (this device's stable ID).
 
@@ -112,8 +107,8 @@ If any of these fail, check the browser console — the keys to look for are `in
 | GitHub Pages shows 404 | Wait 2 minutes after enabling, then hard-refresh (Ctrl+F5). If the URL has a trailing repo name, that's normal. |
 | `eas build` says "no project ID" | Run `eas init` first. Accept the default project name. |
 | APK installs but shows blank screen | Run `npx expo doctor` in `mobile/` — usually a dependency mismatch. |
-| Mobile and dashboard don't share data | They only share data **on the same device/browser** because both use that browser's `localStorage`. Cross-device sync requires Supabase setup (Step 4). |
-| "Sync to Cloud" says "Saved on this device only" | Supabase URL/key not configured — this is the offline fallback, not an error. |
+| Mobile and dashboard don't share data | They only share data **on the same device/browser** because both use that browser's `localStorage`. Cross-device sync requires the backend (Step 4). |
+| "Sync to Cloud" says "Saved on this device only" | `IQ_API` / `API_BASE` not set — this is the offline fallback, not an error. |
 | APK build fails on first run | Most often missing `mobile/assets/icon.png` and `splash.png`. Drop any 1024×1024 PNG named `icon.png` and any 1242×2436 PNG named `splash.png` into `mobile/assets/`. |
 
 ---

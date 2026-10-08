@@ -80,7 +80,7 @@ For the Play Store, change `"buildType": "apk"` → `"app-bundle"` in `eas.json`
 | Aspect | How it works |
 |---|---|
 | **Local storage** | All inventory data lives in AsyncStorage on the phone — works 100% offline |
-| **Cloud sync** | Optional. Run `supabase/schema.sql`, set `SUPABASE_URL` / `SUPABASE_KEY` in `src/lib/supabase.js`, rebuild |
+| **Cloud sync** | Optional. Deploy `backend/`, set `API_BASE` in `src/lib/cloud.js`, rebuild |
 
 ---
 

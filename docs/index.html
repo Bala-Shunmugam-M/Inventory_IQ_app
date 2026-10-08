@@ -694,7 +694,7 @@ html,body{
         </div>
       </div>
       <div class="ob3-bot">
-        <div class="ob3-feat"><div class="ob3-fi" style="background:rgba(59,130,246,.15)">🤖</div><div><div class="ob3-ft">AI Forecast · 87% accuracy</div><div class="ob3-fs">Linear regression + moving average</div></div></div>
+        <div class="ob3-feat"><div class="ob3-fi" style="background:rgba(59,130,246,.15)">🤖</div><div><div class="ob3-ft">AI Forecast · accuracy tested daily</div><div class="ob3-fs">Linear regression + moving average</div></div></div>
         <div class="ob3-feat"><div class="ob3-fi" style="background:rgba(16,185,129,.15)">☁️</div><div><div class="ob3-ft">Cloud sync across all devices</div><div class="ob3-fs">Mobile + Desktop, always in sync</div></div></div>
         <div class="ob3-feat"><div class="ob3-fi" style="background:rgba(245,158,11,.15)">🔒</div><div><div class="ob3-ft">SHA-256 integrity · Auto-rollback</div><div class="ob3-fs">6 core engineering features</div></div></div>
       </div>
@@ -901,8 +901,8 @@ html,body{
       <div class="conf-bl"><span class="cbl-l">Forecast Accuracy</span><span class="cbl-r" id="aiAL" style="color:#10B981">87%</span></div>
       <div class="conf-track"><div class="conf-fill" id="aiCF" style="background:linear-gradient(90deg,#059669,#10B981)"></div></div>
       <div class="cb-rows">
-        <div class="cb-row"><span class="cb-lb">R² Score</span><div class="cb-tr"><div class="cb-fl" id="cb0" style="background:linear-gradient(90deg,#3B82F6,#60A5FA)"></div></div><span class="cb-vl" id="cv0" style="color:#60A5FA"></span></div>
-        <div class="cb-row"><span class="cb-lb">Data quality</span><div class="cb-tr"><div class="cb-fl" id="cb1" style="background:linear-gradient(90deg,#10B981,#34D399)"></div></div><span class="cb-vl" id="cv1" style="color:#34D399"></span></div>
+        <div class="cb-row"><span class="cb-lb">Trend fit R²</span><div class="cb-tr"><div class="cb-fl" id="cb0" style="background:linear-gradient(90deg,#3B82F6,#60A5FA)"></div></div><span class="cb-vl" id="cv0" style="color:#60A5FA"></span></div>
+        <div class="cb-row"><span class="cb-lb">Data window</span><div class="cb-tr"><div class="cb-fl" id="cb1" style="background:linear-gradient(90deg,#10B981,#34D399)"></div></div><span class="cb-vl" id="cv1" style="color:#34D399"></span></div>
         <div class="cb-row"><span class="cb-lb">History days</span><div class="cb-tr"><div class="cb-fl" id="cb2" style="background:linear-gradient(90deg,#8B5CF6,#A78BFA)"></div></div><span class="cb-vl" id="cv2" style="color:#A78BFA"></span></div>
       </div>
     </div>
@@ -1015,9 +1015,9 @@ html,body{
 
     <!-- Device ID -->
     <div style="margin:0 14px 16px;background:linear-gradient(135deg,#1E40AF,#2563EB);border-radius:14px;padding:14px 16px">
-      <div style="font-size:9px;font-weight:800;color:rgba(255,255,255,.6);letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px">Your Device ID</div>
-      <div style="font-size:13px;font-weight:700;color:#fff;font-family:monospace;letter-spacing:.5px" id="deviceIdDisplay">Loading…</div>
-      <div style="font-size:9px;color:rgba(255,255,255,.5);margin-top:4px">Share this ID to sync with another device</div>
+      <div style="font-size:9px;font-weight:800;color:rgba(255,255,255,.6);letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px">Store link code</div>
+      <div style="font-size:13px;font-weight:700;color:#fff;font-family:monospace;letter-spacing:.5px" id="deviceIdDisplay" style="word-break:break-all;user-select:all">Loading…</div>
+      <div style="font-size:9px;color:rgba(255,255,255,.5);margin-top:4px">Paste on another device to share data · keep it private, it works like a password</div>
     </div>
 
     <!-- Section: Intelligence -->
@@ -1060,7 +1060,7 @@ html,body{
     <div style="background:var(--white);border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin-bottom:16px">
       <div class="mi" onclick="doSyncCloud()">
         <div class="mi-ico" style="background:var(--blue-l)">☁️</div>
-        <div class="mi-info"><div class="mi-title">Sync to Cloud</div><div class="mi-sub" id="syncStatus">Push data to Supabase cloud</div></div>
+        <div class="mi-info"><div class="mi-title">Sync to Cloud</div><div class="mi-sub" id="syncStatus">Push products and sales to cloud</div></div>
         <div class="mi-arr">›</div>
       </div>
       <div class="mi" onclick="doRestoreCloud()">
@@ -1294,34 +1294,25 @@ function loadSalesLog(){
 function saveDismissed(){try{localStorage.setItem(DISMISSED_KEY,JSON.stringify(dismissed));}catch(e){}}
 function loadDismissed(){try{var r=localStorage.getItem(DISMISSED_KEY);return r?JSON.parse(r):{};}catch(e){return{};}}
 
-/* Compute status based on stock vs reorder point */
-function computeStatus(p){
-  if(p.stock===0)return 'critical';
-  if(p.stock<=p.rop*0.5)return 'critical';
-  if(p.stock<=p.rop)return 'order';
-  if(p.stock<=p.rop*1.4)return 'watch';
-  return 'good';
-}
-function recomputeAllStatus(){
-  PRODS.forEach(function(p){p.status=computeStatus(p);});
-}
+/* Recompute planning demand, ABC, ROP, EOQ, max and status for the whole catalog (iq-core.js) */
+function recomputeAllStatus(){iqRecompute(PRODS);}
 
 /* ══════════════════════════════════════════
    DATA
 ══════════════════════════════════════════ */
 var DEMO_PRODS=[
-  {id:1,name:'Aashirvaad Atta 5kg',ico:'🌾',stock:12,max:200,rop:30,eoq:88,demand:12,cost:285,sell:320,cls:'A',status:'critical',incoming:0,supplier:'ITC Distributor',phone:'98765 43210',acc:87,r2:87,quality:92,historyDays:20,slope:.4,history:[9,14,11,13,15,10,14,13,15,16,14,18],forecast:14,ci:2,trend:'up',trendPct:18,tips:[{type:'action',ico:'📦',title:'Increase Order Quantity',sub:'High-demand week ahead',body:'Demand is <strong>trending up 18%</strong> over last 7 days. Increase EOQ from 88 to <strong>~104 units</strong>.',cta:'Apply +15% to EOQ'},{type:'warning',ico:'⚠️',title:'Stock Critical Window',sub:'Action required today',body:'Only <strong>12 units</strong> left. Less than <strong>1 day</strong> of stock. Lead time is 3 days. <strong>Order immediately.</strong>',cta:'Place Order Now'}]},
-  {id:2,name:"Lay's Chips 26g",ico:'🍟',stock:14,max:250,rop:83,eoq:423,demand:28,cost:20,sell:30,cls:'A',status:'order',incoming:200,supplier:'PepsiCo Dist.',phone:'98712 34560',acc:91,r2:91,quality:88,historyDays:18,slope:.6,history:[22,25,28,30,26,29,32,28,31,33,30,34],forecast:31,ci:3,trend:'up',trendPct:12,tips:[{type:'action',ico:'📈',title:'Order More This Round',sub:'Weekend spike coming',body:'Weekend sales average <strong>35% higher</strong>. Order <strong>all 423 units</strong> before Thursday.',cta:'Confirm 423-unit Order'}]},
-  {id:3,name:'Colgate Toothpaste',ico:'🪥',stock:25,max:100,rop:35,eoq:118,demand:8,cost:95,sell:125,cls:'A',status:'order',incoming:0,supplier:'Colgate Rep.',phone:'',acc:79,r2:79,quality:75,historyDays:12,slope:.05,history:[7,9,8,6,9,8,7,8,9,7,8,9],forecast:8,ci:2,trend:'flat',trendPct:2,tips:[{type:'positive',ico:'✅',title:'Stable Demand',sub:'No urgency',body:'Demand consistently <strong>8 units/day</strong>. Order standard EOQ of <strong>118 units</strong>.',cta:'Confirm Standard Order'}]},
-  {id:4,name:'Lifebuoy Handwash',ico:'🧴',stock:22,max:80,rop:28,eoq:95,demand:6,cost:110,sell:145,cls:'A',status:'watch',incoming:48,supplier:'HUL Dist.',phone:''},
-  {id:5,name:'Lux Soap',ico:'🧼',stock:32,max:100,rop:41,eoq:242,demand:14,cost:35,sell:50,cls:'B',status:'watch',incoming:0,supplier:'HUL Dist.',phone:''},
-  {id:6,name:'Tata Salt 1kg',ico:'🧂',stock:55,max:120,rop:49,eoq:300,demand:18,cost:22,sell:28,cls:'B',status:'good',incoming:0,supplier:'Tata Consumer',phone:''},
-  {id:7,name:'Parle-G 100g',ico:'🍪',stock:80,max:200,rop:53,eoq:566,demand:35,cost:10,sell:14,cls:'C',status:'good',incoming:0,supplier:'Parle Products',phone:''},
-  {id:8,name:'Fortune Rice 1kg',ico:'🍚',stock:60,max:180,rop:66,eoq:223,demand:22,cost:65,sell:80,cls:'A',status:'good',incoming:0,supplier:'Adani Wilmar',phone:''},
-  {id:9,name:'Maggi Noodles 70g',ico:'🍜',stock:50,max:160,rop:63,eoq:396,demand:20,cost:14,sell:20,cls:'C',status:'good',incoming:96,supplier:'Nestle Dist.',phone:''},
-  {id:10,name:'Haldiram Namkeen',ico:'🥨',stock:45,max:160,rop:67,eoq:217,demand:16,cost:75,sell:100,cls:'A',status:'good',incoming:0,supplier:'Haldiram Dist.',phone:''},
-  {id:11,name:'Dettol Soap',ico:'🫧',stock:22,max:90,rop:30,eoq:181,demand:10,cost:45,sell:65,cls:'B',status:'good',incoming:0,supplier:'Reckitt Dist.',phone:''},
-  {id:12,name:'Shampoo Sachet',ico:'💆',stock:120,max:350,rop:63,eoq:907,demand:45,cost:4,sell:6,cls:'C',status:'good',incoming:350,supplier:'Local Wholesale',phone:''},
+  {id:1,name:'Aashirvaad Atta 5kg',ico:'🌾',stock:12,max:200,rop:30,eoq:88,demand:12,cost:285,sell:320,lead:3,cls:'A',status:'critical',incoming:0,supplier:'ITC Distributor',phone:'98765 43210',history:[9,14,11,13,15,10,14,13,15,16,14,18],tips:[{type:'action',ico:'📦',title:'Increase Order Quantity',sub:'High-demand week ahead',body:'Demand is <strong>trending up 18%</strong> over last 7 days. Increase EOQ from 88 to <strong>~104 units</strong>.',cta:'Apply +15% to EOQ'},{type:'warning',ico:'⚠️',title:'Stock Critical Window',sub:'Action required today',body:'Only <strong>12 units</strong> left. Less than <strong>1 day</strong> of stock. Lead time is 3 days. <strong>Order immediately.</strong>',cta:'Place Order Now'}]},
+  {id:2,name:"Lay's Chips 26g",ico:'🍟',stock:14,max:250,rop:83,eoq:423,demand:28,cost:20,sell:30,lead:2,cls:'A',status:'order',incoming:200,supplier:'PepsiCo Dist.',phone:'98712 34560',history:[22,25,28,30,26,29,32,28,31,33,30,34],tips:[{type:'action',ico:'📈',title:'Order More This Round',sub:'Weekend spike coming',body:'Weekend sales average <strong>35% higher</strong>. Order <strong>all 423 units</strong> before Thursday.',cta:'Confirm 423-unit Order'}]},
+  {id:3,name:'Colgate Toothpaste',ico:'🪥',stock:25,max:100,rop:35,eoq:118,demand:8,cost:95,sell:125,lead:3,cls:'A',status:'order',incoming:0,supplier:'Colgate Rep.',phone:'',history:[7,9,8,6,9,8,7,8,9,7,8,9],tips:[{type:'positive',ico:'✅',title:'Stable Demand',sub:'No urgency',body:'Demand consistently <strong>8 units/day</strong>. Order standard EOQ of <strong>118 units</strong>.',cta:'Confirm Standard Order'}]},
+  {id:4,name:'Lifebuoy Handwash',ico:'🧴',stock:22,max:80,rop:28,eoq:95,demand:6,cost:110,sell:145,lead:3,cls:'A',status:'watch',incoming:48,supplier:'HUL Dist.',phone:'',history:[5,7,6,5,7,6,5,6,7,6,5,7]},
+  {id:5,name:'Lux Soap',ico:'🧼',stock:32,max:100,rop:41,eoq:242,demand:14,cost:35,sell:50,lead:2,cls:'B',status:'watch',incoming:0,supplier:'HUL Dist.',phone:'',history:[13,15,14,12,15,14,13,14,15,13,14,15]},
+  {id:6,name:'Tata Salt 1kg',ico:'🧂',stock:55,max:120,rop:49,eoq:300,demand:18,cost:22,sell:28,lead:2,cls:'B',status:'good',incoming:0,supplier:'Tata Consumer',phone:'',history:[15,16,17,17,18,18,19,19,20,20,21,22]},
+  {id:7,name:'Parle-G 100g',ico:'🍪',stock:80,max:200,rop:53,eoq:566,demand:35,cost:10,sell:14,lead:1,cls:'C',status:'good',incoming:0,supplier:'Parle Products',phone:'',history:[33,37,34,36,38,34,35,33,37,36,34,38]},
+  {id:8,name:'Fortune Rice 1kg',ico:'🍚',stock:60,max:180,rop:66,eoq:223,demand:22,cost:65,sell:80,lead:2,cls:'A',status:'good',incoming:0,supplier:'Adani Wilmar',phone:'',history:[18,20,22,25,28,22,19,21,24,26,22,20]},
+  {id:9,name:'Maggi Noodles 70g',ico:'🍜',stock:50,max:160,rop:63,eoq:396,demand:20,cost:14,sell:20,lead:2,cls:'C',status:'good',incoming:96,supplier:'Nestle Dist.',phone:'',history:[17,18,19,19,20,20,21,21,22,22,23,24]},
+  {id:10,name:'Haldiram Namkeen',ico:'🥨',stock:45,max:160,rop:67,eoq:217,demand:16,cost:75,sell:100,lead:3,cls:'A',status:'good',incoming:0,supplier:'Haldiram Dist.',phone:'',history:[15,17,14,16,18,15,16,14,17,16,15,18]},
+  {id:11,name:'Dettol Soap',ico:'🫧',stock:22,max:90,rop:30,eoq:181,demand:10,cost:45,sell:65,lead:2,cls:'B',status:'good',incoming:0,supplier:'Reckitt Dist.',phone:'',history:[9,11,10,9,11,10,9,10,11,9,10,11]},
+  {id:12,name:'Shampoo Sachet',ico:'💆',stock:120,max:350,rop:63,eoq:907,demand:45,cost:4,sell:6,lead:1,cls:'C',status:'good',incoming:350,supplier:'Local Wholesale',phone:'',history:[36,40,45,52,58,46,38,42,48,54,46,37]},
 ];
 /* Initialize PRODS from localStorage, fall back to empty array (user can load demo) */
 var PRODS = loadProds() || [];
@@ -1513,16 +1504,16 @@ function initForecast(){
     var tIco=trend==='up'?'📈':trend==='down'?'📉':'➡️';
     var tLbl=trend==='up'?'Rising':trend==='down'?'Falling':'Stable';
     var rec=trend==='up'?'Increase next order — demand growing':trend==='down'?'Reduce next order — demand falling':'Maintain current order quantity';
-    var accCol=acc>=70?'var(--green)':acc>=40?'var(--amber)':'var(--red)';
+    var accCol=acc==null?'var(--muted)':acc>=80?'var(--green)':acc>=60?'var(--amber)':'var(--red)';
     var spark='';if(hist.length>1){var mn=Math.min.apply(null,hist),mx=Math.max.apply(null,hist),rg=mx-mn||1;var pts=hist.slice(-12).map(function(v,i,a){return (i/(a.length-1)*90).toFixed(1)+','+(24-((v-mn)/rg)*20).toFixed(1);});spark='<svg width="90" height="26" viewBox="0 0 90 26"><polyline points="'+pts.join(' ')+'" fill="none" stroke="'+tc+'" stroke-width="2"/></svg>';}
     return '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:13px;margin-bottom:9px">'
       +'<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">'+(p.ico||'📦')+'</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:var(--ink)">'+p.name+'</div><div style="font-size:10px;color:var(--muted);font-weight:600">'+(hist.length||0)+' days history</div></div><span style="font-size:11px;font-weight:800;color:'+tc+'">'+tIco+' '+tLbl+'</span></div>'
       +'<div style="display:flex;gap:8px;margin-top:10px"><div style="flex:1;background:var(--bg);border-radius:9px;padding:9px"><div style="font-size:9px;font-weight:800;color:var(--muted)">NEXT DAY</div><div style="font-size:18px;font-weight:800;color:var(--purple)">'+fc+'</div><div style="font-size:9px;color:var(--muted)">±'+ci+' units</div></div>'
-      +'<div style="flex:1;background:var(--bg);border-radius:9px;padding:9px"><div style="font-size:9px;font-weight:800;color:var(--muted)">MODEL FIT (R²)</div><div style="font-size:18px;font-weight:800;color:'+accCol+'">'+acc+'%</div><div style="font-size:9px;color:var(--muted)">'+(acc>=70?'High':acc>=40?'Moderate':'Low')+'</div></div>'
-      +'<div style="flex:1;background:var(--bg);border-radius:9px;padding:9px"><div style="font-size:9px;font-weight:800;color:var(--muted)">TREND</div><div style="font-size:18px;font-weight:800;color:'+tc+'">'+(trend==='up'?'+':trend==='down'?'−':'')+tpct+'%</div>'+spark+'</div></div>'
+      +'<div style="flex:1;background:var(--bg);border-radius:9px;padding:9px"><div style="font-size:9px;font-weight:800;color:var(--muted)">ACCURACY</div><div style="font-size:18px;font-weight:800;color:'+accCol+'">'+(acc==null?'—':acc+'%')+'</div><div style="font-size:9px;color:var(--muted)">'+(acc==null?'needs 7 days':'last 7 days tested')+'</div></div>'
+      +'<div style="flex:1;background:var(--bg);border-radius:9px;padding:9px"><div style="font-size:9px;font-weight:800;color:var(--muted)">TREND / WEEK</div><div style="font-size:18px;font-weight:800;color:'+tc+'">'+(trend==='up'?'+':trend==='down'?'−':'')+tpct+'%</div>'+spark+'</div></div>'
       +'<div style="background:var(--blue-l);border-radius:9px;padding:9px;margin-top:8px"><div style="font-size:9px;font-weight:800;color:var(--blue)">RECOMMENDATION</div><div style="font-size:12px;font-weight:700;color:var(--ink)">'+rec+'</div></div></div>';
   }).join('');
-  box.innerHTML=h+'<div style="font-size:10px;color:var(--muted);text-align:center;margin-top:6px;line-height:15px">Forecast = 0.6×LinReg + 0.4×MA7 · 90% confidence interval. Log sales daily for better accuracy.</div>';
+  box.innerHTML=h+'<div style="font-size:10px;color:var(--muted);text-align:center;margin-top:6px;line-height:15px">Forecast = 0.6×Trend + 0.4×7-day avg · ±90% range · Accuracy = 1 − average % error when the last 7 logged days are forecast from the days before. Log sales daily for better accuracy.</div>';
 }
 function initHub(){
   var el=document.getElementById('hubGrid');if(!el)return;
@@ -1545,11 +1536,10 @@ function initHub(){
 }
 function raRows(){
   return (PRODS||[]).map(function(p){
-    var dd=Math.max(0.01,p.demand||0),sell=p.sell||0,stock=p.stock||0,rop=p.rop||0,lead=p.lead||3;
-    var cover=stock/dd,lostUnits=Math.max(0,lead-cover)*dd,rar=Math.round(lostUnits*sell);
-    var pr=(cover<lead||stock<=rop*0.5)?'Critical':(stock<=rop)?'High':(stock<=rop*1.4)?'Medium':'Low';
+    var cover=iqCover(p),st=iqStatus(p);
+    var pr={critical:'Critical',order:'High',watch:'Medium'}[st]||'Low';
     var dt=new Date();dt.setDate(dt.getDate()+Math.floor(cover));
-    return {name:p.name,ico:p.ico||'📦',stock:stock,daysLeft:Math.round(cover*10)/10,date:dt,rar:rar,lostUnits:Math.round(lostUnits),pr:pr,action:stock<=rop?'Reorder':'Monitor'};
+    return {name:p.name,ico:p.ico||'📦',stock:p.stock||0,daysLeft:Math.round(cover*10)/10,date:dt,rar:iqRevAtRisk(p),lostUnits:Math.round(iqLostUnits(p)),pr:pr,action:st==='critical'||st==='order'?'Reorder':'Monitor'};
   }).filter(function(r){return r.pr!=='Low'||r.rar>0;}).sort(function(a,b){return b.rar-a.rar;});
 }
 function initRevenue(){
@@ -1568,7 +1558,7 @@ function mRebalancePlan(){
   var ps=PRODS||[];if(ps.length<2)return null;
   var reduce=null,increase=null,rv=-1,iv=-1;
   ps.forEach(function(p){
-    var dd=Math.max(0.01,p.demand||0),cover=p.stock/dd,margin=p.sell>0?(p.sell-p.cost)/p.sell:0;
+    var dd=Math.max(0.01,iqD(p)),cover=p.stock/dd,margin=p.sell>0?(p.sell-p.cost)/p.sell:0;
     var excess=Math.max(0,p.stock-((p.rop||0)+(p.eoq||0))),exVal=excess*(p.cost||0);
     var rscore=exVal*(1.3-margin);if(excess>0&&rscore>rv){rv=rscore;reduce={p:p,excess:excess,exVal:exVal};}
     var iscore=margin*(p.sell*dd)*(cover<(p.lead||3)*1.5?1.5:0.4);if(iscore>iv){iv=iscore;increase={p:p,dd:dd};}
@@ -1611,7 +1601,7 @@ var _mconsult=[];
 var M_CONSULT_Q=['Why is profit decreasing?','Which products should I reorder?','Why is inventory health low?','Where is my cash tied up?'];
 function mConsultCtx(){
   var d=aiDecisionIntel();
-  var skus=(PRODS||[]).map(function(p){var dd=Math.max(0.01,p.demand||0);return {name:p.name,class:p.cls,stock:p.stock,reorder_point:p.rop,lead_days:p.lead,days_cover:Math.round(p.stock/dd*10)/10,daily_demand:p.demand,cost:p.cost,sell:p.sell,margin_pct:p.sell>0?Math.round((p.sell-p.cost)/p.sell*100):0};});
+  var skus=(PRODS||[]).map(function(p){return {name:p.name,class:p.cls,stock:p.stock,reorder_point:p.rop,lead_days:iqLead(p),days_cover:Math.round(iqCover(p)*10)/10,daily_demand:iqD(p),cost:p.cost,sell:p.sell,margin_pct:p.sell>0?Math.round((p.sell-p.cost)/p.sell*100):0};});
   return {decision_intel:d?{inventory_health:d.health,grade:d.grade,revenue_at_risk:d.revAtRisk,capital_locked:d.invValue,recoverable:d.recoverable,service_level_pct:d.serviceLevel,forecast_accuracy_pct:d.forecastAcc}:null,products:skus};
 }
 function mConsultLLM(q,cb,err){
@@ -1646,10 +1636,10 @@ var _mWeeklyHTML='';
 function mWeeklyData(){
   var d=aiDecisionIntel();if(!d)return null;var log=(typeof loadSalesLog==='function')?loadSalesLog():[];var now=Date.now(),DAY=864e5,last7=0,prev7=0;
   log.forEach(function(e){var age=now-new Date(e.date).getTime();if(age<=7*DAY)last7+=e.totalRevenue||0;else if(age<=14*DAY)prev7+=e.totalRevenue||0;});
-  var est=false;if(last7===0){last7=(PRODS||[]).reduce(function(a,p){return a+p.sell*p.demand*7;},0);est=true;}
+  var est=false;if(last7===0){last7=(PRODS||[]).reduce(function(a,p){return a+p.sell*iqD(p)*7;},0);est=true;}
   var revPct=prev7>0?Math.round((last7-prev7)/prev7*100):null;
   var hist=d.hist||[],hNow=d.health,hPrev=hist.length>7?hist[hist.length-8].h:(hist.length?hist[0].h:hNow);
-  var best=null,worst=null,bv=-1,wv=-1;(PRODS||[]).forEach(function(p){var pr=(p.sell-p.cost)*p.demand*30;if(pr>bv){bv=pr;best=p;}var dd=Math.max(0.01,p.demand),rar=Math.max(0,(p.lead||3)-p.stock/dd)*dd*p.sell;if(rar>wv){wv=rar;worst=p;}});
+  var best=null,worst=null,bv=-1,wv=-1;(PRODS||[]).forEach(function(p){var pr=(p.sell-p.cost)*iqD(p)*30;if(pr>bv){bv=pr;best=p;}var rar=iqRevAtRisk(p);if(rar>wv){wv=rar;worst=p;}});
   return {revenue:Math.round(last7),revPct:revPct,est:est,hNow:hNow,hPrev:hPrev,capital:d.recoverable,service:d.serviceLevel,best:best,bestProfit:Math.round(bv),worst:worst,worstRisk:Math.round(wv),plan:d.plan,opps:d.opps};
 }
 function initWeekly(){
@@ -1698,7 +1688,7 @@ function mTwinUpdate(){
   var sl=document.getElementById('mTwinSlider');if(!sl)return;var m=parseFloat(sl.value)/100;var rup=function(n){return '₹'+Math.round(n).toLocaleString('en-IN');};
   document.getElementById('mTwinMult').textContent=Math.round(m*100)+'%';
   var stockU=0,dUnits=0,dRev=0,dProf=0,so=0;
-  PRODS.forEach(function(p){var nd=(p.demand||0)*m;stockU+=p.stock;dUnits+=nd;dRev+=nd*p.sell;dProf+=nd*(p.sell-p.cost);if(p.stock/Math.max(0.01,nd)<(p.lead||3))so++;});
+  PRODS.forEach(function(p){var nd=iqD(p)*m;stockU+=p.stock;dUnits+=nd;dRev+=nd*p.sell;dProf+=nd*(p.sell-p.cost);if(p.stock/Math.max(0.01,nd)<iqLead(p))so++;});
   var cover=dUnits>0?Math.round(stockU/dUnits):'∞';
   var node=function(ico,lbl,val,sub,c){return '<div style="display:flex;align-items:center;gap:12px;background:var(--white);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:7px"><div style="font-size:22px">'+ico+'</div><div style="flex:1"><div style="font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase">'+lbl+'</div><div style="font-size:11px;color:var(--muted)">'+sub+'</div></div><div style="font-size:17px;font-weight:800;color:'+(c||'var(--ink)')+'">'+val+'</div></div>';};
   var h=node('🏬','Warehouse',stockU+' u','units in stock')
@@ -1715,9 +1705,9 @@ function mTwinUpdate(){
 function mSupplierIntel(){
   var by={};
   (PRODS||[]).forEach(function(p){var s=p.supplier&&p.supplier!=='—'?p.supplier:'Unassigned';if(!by[s])by[s]={name:s,count:0,leads:[],atRisk:0,rar:0,leadScore:0,svcScore:0,n:0};
-    var dd=Math.max(0.01,p.demand||0),cover=p.stock/dd,lead=p.lead||3;by[s].count++;by[s].leads.push(lead);
+    var lead=iqLead(p);by[s].count++;by[s].leads.push(lead);
     by[s].leadScore+=Math.max(0,Math.min(100,(1-(lead-1)/13)*100));by[s].svcScore+=Math.min(100,p.rop>0?p.stock/p.rop*100:100);by[s].n++;
-    if(p.stock<=p.rop||cover<lead)by[s].atRisk++;by[s].rar+=Math.round(Math.max(0,lead-cover)*dd*p.sell);});
+    if(p.stock<=p.rop)by[s].atRisk++;by[s].rar+=iqRevAtRisk(p);});
   return Object.keys(by).map(function(k){var s=by[k],ls=s.leadScore/s.n,ss=s.svcScore/s.n;return {name:s.name,count:s.count,avgLead:Math.round(s.leads.reduce(function(a,b){return a+b;},0)/s.leads.length*10)/10,atRisk:s.atRisk,rar:s.rar,onTime:Math.round(ls),reliability:Math.round(0.55*ls+0.45*ss)};}).sort(function(a,b){return b.reliability-a.reliability;});
 }
 function initSuppliers(){
@@ -1726,15 +1716,11 @@ function initSuppliers(){
   var sups=mSupplierIntel(),col=function(v){return v>=80?'#059669':v>=65?'#D97706':'#DC2626';};
   var weakest=sups[sups.length-1];
   var h=weakest&&weakest.reliability<75?'<div style="background:var(--purple-l);border:1px solid var(--purple);border-radius:12px;padding:12px;margin-bottom:10px"><div style="font-size:10px;font-weight:800;color:var(--purple);margin-bottom:4px">✦ AI INSIGHT</div><div style="font-size:12px;color:var(--ink2);line-height:18px"><b>'+weakest.name+'</b> is weakest ('+weakest.reliability+'/100, '+weakest.avgLead+'d lead)'+(weakest.atRisk?' · '+rup(weakest.rar)+' at risk':'')+'. Consider moving critical SKUs to a faster supplier.</div></div>':'';
-  h+=sups.map(function(s){var c=col(s.reliability);return '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px"><div style="display:flex;align-items:center;gap:12px"><div style="width:46px;height:46px;border-radius:11px;background:'+c+'18;display:flex;flex-direction:column;align-items:center;justify-content:center"><div style="font-size:16px;font-weight:800;color:'+c+'">'+s.reliability+'</div></div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:var(--ink)">🏭 '+s.name+'</div><div style="font-size:10px;color:var(--muted);font-weight:600">'+s.count+' SKUs · '+s.avgLead+'d lead · '+s.onTime+'% on-time</div></div><div style="text-align:right">'+(s.atRisk?'<div style="font-size:11px;font-weight:800;color:var(--red)">'+s.atRisk+' at risk</div>':'<div style="font-size:11px;color:var(--green);font-weight:700">✓</div>')+'</div></div><div style="height:5px;background:var(--surface);border-radius:3px;margin-top:9px;overflow:hidden"><div style="height:100%;width:'+s.reliability+'%;background:'+c+'"></div></div></div>';}).join('');
+  h+=sups.map(function(s){var c=col(s.reliability);return '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px"><div style="display:flex;align-items:center;gap:12px"><div style="width:46px;height:46px;border-radius:11px;background:'+c+'18;display:flex;flex-direction:column;align-items:center;justify-content:center"><div style="font-size:16px;font-weight:800;color:'+c+'">'+s.reliability+'</div></div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:var(--ink)">🏭 '+s.name+'</div><div style="font-size:10px;color:var(--muted);font-weight:600">'+s.count+' SKUs · '+s.avgLead+'d lead · '+s.onTime+' lead-time score</div></div><div style="text-align:right">'+(s.atRisk?'<div style="font-size:11px;font-weight:800;color:var(--red)">'+s.atRisk+' at risk</div>':'<div style="font-size:11px;color:var(--green);font-weight:700">✓</div>')+'</div></div><div style="height:5px;background:var(--surface);border-radius:3px;margin-top:9px;overflow:hidden"><div style="height:100%;width:'+s.reliability+'%;background:'+c+'"></div></div></div>';}).join('');
   box.innerHTML=h;
 }
 /* ── Scenario Lab (mobile) ── */
-function mSimulate(dPct,lDelta){var ps=PRODS||[],so=0,cap=0,served=0,rb=0,ri=0,rows=[];
-  ps.forEach(function(p){var nd=Math.max(0.01,(p.demand||0)*(1+dPct/100)),nl=Math.max(1,(p.lead||3)+lDelta),newRop=Math.ceil(nd*nl*1.3),cost=p.cost||0,out=p.stock<newRop;if(out)so++;else served++;var ex=Math.max(0,newRop-p.stock)*cost;cap+=ex;rb+=p.rop||0;ri+=newRop;rows.push({name:p.name,ico:p.ico||'📦',out:out,capital:Math.round(ex),newRop:newRop,oldRop:p.rop||0});});
-  rows.sort(function(a,b){return b.capital-a.capital;});
-  return {stockouts:so,capital:Math.round(cap),service:ps.length?Math.round(served/ps.length*100):100,ssPct:rb>0?Math.round((ri-rb)/rb*100):0,rows:rows.slice(0,5)};
-}
+function mSimulate(dPct,lDelta){var s=iqSimulate(PRODS||[],dPct,lDelta);s.rows=s.rows.slice(0,5);return s;}
 function initScenario(){
   var box=document.getElementById('mScenBox');if(!box)return;
   if(!PRODS.length){box.innerHTML='<div style="text-align:center;padding:40px;color:var(--muted)"><div style="font-size:40px">🔮</div><div style="font-weight:800;color:var(--ink);margin:8px">No data</div></div>';return;}
@@ -1775,8 +1761,10 @@ function initHome(){
   }
   // stats
   var urgent=PRODS.filter(function(p){return p.status!=='good';});
-  var tp=PRODS.reduce(function(s,p){return s+(p.sell-p.cost)*Math.round(p.demand*.7);},0);
-  document.getElementById('hPft').textContent='₹'+Math.round(tp/1000)+'K';
+  // Profit Today: what was logged today; before any sales are logged, the expected daily profit.
+  var today=iqToday(),logged=loadSalesLog().filter(function(e){return iqToday(new Date(e.date))===today;});
+  var tp=logged.length?logged.reduce(function(s,e){return s+(e.totalProfit||0);},0):PRODS.reduce(function(s,p){return s+(p.sell-p.cost)*iqD(p);},0);
+  document.getElementById('hPft').textContent='₹'+(tp>=1000?(tp/1000).toFixed(1)+'K':Math.round(tp));
   document.getElementById('hAlr').textContent=PRODS.filter(iqNeedsAction).length;
   var gc=PRODS.filter(function(p){return p.status==='good';}).length;
   var wc=PRODS.filter(function(p){return p.status==='watch';}).length;
@@ -1836,7 +1824,7 @@ function renderHomeCards(){
         +'<div class="ac-stripe"></div>'
         +'<div class="ac-body">'
           +'<div class="ac-top"><span class="ac-badge">'+badge+'</span><span class="ac-cls">'+p.cls+'</span></div>'
-          +'<div class="ac-qty-row"><span class="ac-qty">'+p.eoq+'</span><span class="ac-qty-u">units to order</span></div>'
+          +'<div class="ac-qty-row"><span class="ac-qty">'+iqOrderQty(p)+'</span><span class="ac-qty-u">units to order</span></div>'
           +'<div class="ac-name">'+p.name+'</div>'
           +'<div class="ac-meta"><div class="mp"><span class="ml">Stock</span><span class="mv">'+p.stock+'</span></div><div class="mp"><span class="ml">ROP</span><span class="mv">'+p.rop+'</span></div><div class="mp"><span class="ml">EOQ</span><span class="mv">'+p.eoq+'</span></div></div>'
           +inc
@@ -1939,7 +1927,7 @@ function renderProdList(){
         +'</div>'
         +'<div class="pi-right">'
           +'<span class="pi-el">Order</span>'
-          +'<span class="pi-eoq">'+p.eoq+'</span>'
+          +'<span class="pi-eoq">'+iqOrderQty(p)+'</span>'
           +'<span class="pi-st '+bc+'">'+sl+'</span>'
         +'</div>'
       +'</div>';
@@ -2111,19 +2099,20 @@ function initAI(){
   });
   try{renderCommandCenter();}catch(e){}
   var p=PRODS[aiSel];
-  if(!p.acc)return;
-  // hero
+  if(!p)return;
+  var fc=iqForecast(p),acc=fc.acc,hist=p.history&&p.history.length>1?p.history:[iqD(p),iqD(p)];
+  // hero: forecast accuracy from the backtest (— until 7 days of sales are logged)
   document.getElementById('aiPN').textContent=p.name;
-  document.getElementById('aiSc').textContent=p.acc+'%';
-  document.getElementById('aiAL').textContent=p.acc+'%';
-  var col=p.acc>=85?'linear-gradient(90deg,#059669,#10B981)':p.acc>=70?'linear-gradient(90deg,#D97706,#F59E0B)':'linear-gradient(90deg,#DC2626,#F43F5E)';
-  var txtcol=p.acc>=85?'#10B981':p.acc>=70?'#F59E0B':'#F43F5E';
+  document.getElementById('aiSc').textContent=acc==null?'—':acc+'%';
+  document.getElementById('aiAL').textContent=acc==null?'needs 7 days of sales':acc+'%';
+  var col=acc>=85?'linear-gradient(90deg,#059669,#10B981)':acc>=70?'linear-gradient(90deg,#D97706,#F59E0B)':'linear-gradient(90deg,#DC2626,#F43F5E)';
+  var txtcol=acc>=85?'#10B981':acc>=70?'#F59E0B':'#F43F5E';
   document.getElementById('aiAL').style.color=txtcol;
   document.getElementById('aiSc').style.color=txtcol;
   setTimeout(function(){
-    document.getElementById('aiCF').style.width=p.acc+'%';
+    document.getElementById('aiCF').style.width=(acc||0)+'%';
     document.getElementById('aiCF').style.background=col;
-    [[p.r2,100,'%'],[p.quality,100,'%'],[p.historyDays,60,'d']].forEach(function(m,i){
+    [[fc.r2,100,'%'],[Math.min(100,Math.round(fc.n/IQ_PARAMS.window*100)),100,'%'],[fc.n,60,'d']].forEach(function(m,i){
       setTimeout(function(){
         var b=document.getElementById('cb'+i),v=document.getElementById('cv'+i);
         if(b)b.style.width=Math.round((m[0]/m[1])*100)+'%';
@@ -2132,7 +2121,7 @@ function initAI(){
     });
   },200);
   // trend
-  var isUp=p.trend==='up',isDn=p.trend==='down';
+  var isUp=fc.trend==='up',isDn=fc.trend==='down';
   var tcol=isUp?'#10B981':isDn?'#F43F5E':'#60A5FA';
   var arrow=isUp?'⬆':isDn?'⬇':'→';
   var tLbl=isUp?'Increasing demand':isDn?'Decreasing demand':'Stable demand';
@@ -2143,10 +2132,10 @@ function initAI(){
     return '<svg class="msp" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none"><path class="msp-a" d="'+d+' L'+W+','+H+' L0,'+H+' Z" fill="'+col+'"/><path class="msp-l" d="'+d+'" stroke="'+col+'"/></svg>';
   }
   var tg=document.getElementById('aiTGrid');tg.innerHTML='';
-  [{lb:'Demand Trend',v:(isUp?'+':isDn?'-':'')+p.trendPct+'%',vc:tcol,s:'vs last 7 days',tr:true,sp:mkSpark(p.history.slice(-7),tcol)},
-   {lb:'AI Forecast',v:p.forecast+'/day',vc:'#A78BFA',s:'next 7 days ±'+p.ci,sp:mkSpark(p.history.slice(-5),tcol)},
-   {lb:'Daily Demand',v:p.demand+'/day',vc:'#60A5FA',s:'14-day average',sp:mkSpark(p.history,'#60A5FA')},
-   {lb:'Confidence',v:p.acc+'%',vc:txtcol,s:'R² model score',sp:null},
+  [{lb:'Demand Trend',v:(isUp?'+':isDn?'-':'')+fc.trendPct+'%',vc:tcol,s:'per week',tr:true,sp:mkSpark(hist.slice(-7),tcol)},
+   {lb:'AI Forecast',v:fc.forecast+'/day',vc:'#A78BFA',s:'next day ±'+fc.ci,sp:mkSpark(hist.slice(-5),tcol)},
+   {lb:'Daily Demand',v:iqD(p)+'/day',vc:'#60A5FA',s:fc.n>=IQ_PARAMS.minHistory?'avg of last '+Math.min(fc.n,IQ_PARAMS.window)+' days':'typed + logged blend',sp:mkSpark(hist,'#60A5FA')},
+   {lb:'Accuracy',v:acc==null?'—':acc+'%',vc:txtcol,s:'backtest, last 7 days',sp:null},
   ].forEach(function(tc){
     var d=document.createElement('div');d.className='atc';
     d.innerHTML='<div class="atc-lb">'+tc.lb+'</div>'
@@ -2167,13 +2156,12 @@ function initAI(){
       +'<div class="tip-ct" onclick="toast(\'→ '+t.cta+'\')">👉 '+t.cta+' →</div>';
     ta.appendChild(d);
   });}
-  // formula
-  var ma7=Math.round(p.history.slice(-7).reduce(function(a,b){return a+b;},0)/7);
+  // formula — the real numbers behind this product's plan
+  var d=iqD(p),L=iqLead(p),sg=iqSigma(p,d),z=IQ_PARAMS.z[p.cls]||IQ_PARAMS.z.C;
   document.getElementById('aiEq').innerHTML=
-    '<span class="hl">Forecast</span> = 0.6×LinReg + 0.4×MA7<br>'
-    +'= 0.6×<span class="gn">'+Math.round(p.forecast*1.05)+'</span> + 0.4×<span class="gn">'+ma7+'</span><br>'
-    +'= <span class="gn">'+p.forecast+'</span>/day  CI:±<span class="am">'+p.ci+'</span><br>'
-    +'<span class="hl">EOQ</span> = √(2×'+(p.demand*365)+'×50÷(cost×0.2))';
+    '<span class="hl">Forecast</span> = 0.6×Trend + 0.4×7-day avg = <span class="gn">'+fc.forecast+'</span>/day ±<span class="am">'+fc.ci+'</span><br>'
+    +'<span class="hl">ROP</span> = d×L + z×σ×√L = '+d+'×'+L+' + '+z+'×'+(Math.round(sg*10)/10)+'×√'+L+' = <span class="gn">'+p.rop+'</span><br>'
+    +'<span class="hl">EOQ</span> = √(2×'+Math.round(d*365)+'×'+IQ_PARAMS.orderCost+' ÷ ('+p.cost+'×'+IQ_PARAMS.holdRate+')) = <span class="gn">'+p.eoq+'</span>';
 }
 
 /* ══════════════════════════════════════════
@@ -2191,8 +2179,7 @@ function toast(m,type){
    MORE / SETTINGS
 ══════════════════════════════════════════ */
 function initMore(){
-  var devId=getDeviceId();
-  var el=document.getElementById('deviceIdDisplay');if(el)el.textContent=devId;
+  var el=document.getElementById('deviceIdDisplay');if(el)el.textContent=(iqLinkCode()||(iqCloudReady()?'Sync once to create your store':'Cloud sync off — data stays on this device'));
   try{
     var h=JSON.parse(localStorage.getItem(SYNC_HIST_KEY)||'[]');
     var sub=document.getElementById('syncHistSub');
@@ -2220,18 +2207,20 @@ function doSyncCloud(){
   }catch(e){}
   iqPush(PRODS,loadSalesLog()).then(function(r){
     localStorage.setItem('iq_last_sync',Date.now().toString());
-    toast(r.mode==='cloud'?'✅ Synced '+PRODS.length+' products to cloud':'💾 Saved on this device only — cloud sync not configured','green');
+    if(r.merged){PRODS=r.merged.data;recomputeAllStatus();saveProds();try{localStorage.setItem(SALES_KEY,JSON.stringify(r.merged.sales));}catch(e){}if(curScreen==='home')initHome();}
+    toast(r.mode==='cloud'?(r.merged?'✅ Merged with changes from another device · ':'✅ Synced ')+PRODS.length+' products':'💾 Saved on this device only — cloud sync not configured','green');
     initMore();
   }).catch(function(e){if(ss)ss.textContent='Sync failed — tap to retry';toast('Sync failed: '+e.message,'red');});
 }
 
 function doRestoreCloud(){
-  var id=prompt('Enter the Device ID to restore from (or leave blank to use this device):');
+  var id=prompt('Paste a store link code from another device (iq1:…), or leave blank to pull the latest for this store:');
   if(id===null)return;
   iqPull(id).then(function(snap){
-    if(!snap||!snap.data.length){toast(iqCloudReady()?'No data found for that Device ID':'No snapshot saved on this device');return;}
-    if(snap.mode==='local'&&id.trim()&&snap.deviceId!==id.trim().toUpperCase()){toast('Cloud sync not configured — can only restore this device\'s snapshot','red');return;}
+    if(!snap||!snap.data.length){toast(iqCloudReady()?'Nothing saved to that store yet':'No snapshot saved on this device');return;}
+    if(snap.mode==='local'&&id.trim()){toast('Cloud sync not configured — can only restore this device\'s snapshot','red');return;}
     if(!confirm('Found '+snap.data.length+' products from '+new Date(snap.ts).toLocaleString()+'. Restore? This replaces current data.'))return;
+    snap.commit();
     PRODS=snap.data;
     recomputeAllStatus();
     saveProds();
@@ -2428,36 +2417,23 @@ function submitAddProd(){
   if(!name){alert('Please enter a product name.');return;}
   if(cost<=0){alert('Please enter a valid cost price.');return;}
   if(sell<=0){alert('Please enter a valid sell price.');return;}
-  // Compute ROP and EOQ
-  // ROP = demand * lead-time * 1.3 (safety factor)
-  var rop=Math.max(1,Math.ceil(demand*apLead*1.3));
-  // EOQ = sqrt(2 * D * S / H), assume S=50 setup cost, H=20% of cost holding
-  var D=demand*365;var S=50;var H=Math.max(0.1,cost*0.2);
-  var eoq=Math.max(1,Math.ceil(Math.sqrt(2*D*S/H)));
-  // ABC class by sell price * demand
-  var revPerDay=sell*demand;
-  var cls=revPerDay>500?'A':revPerDay>100?'B':'C';
+  // ROP, EOQ, ABC class, max and status are derived for the whole catalog by iqRecompute
   var newP={
     id:Date.now(),
     name:name,
     ico:ico,
     stock:stock,
-    max:Math.max(stock*2,rop*3,100),
-    rop:rop,
-    eoq:eoq,
     lead:apLead,
     demand:demand,
     cost:cost,
     sell:sell,
-    cls:cls,
-    status:'good',
     incoming:0,
     supplier:supplier,
     phone:'',
     history:[]
   };
-  newP.status=computeStatus(newP);
   PRODS.push(newP);
+  recomputeAllStatus();
   saveProds();
   closeAddProd();
   toast('✅ Added '+name,'green');
@@ -2502,13 +2478,7 @@ function submitEditProd(){
   p.cost=parseFloat(document.getElementById('ep-cost').value)||0;
   p.sell=parseFloat(document.getElementById('ep-sell').value)||0;
   p.supplier=(document.getElementById('ep-supplier').value||'').trim()||'—';
-  // recompute ROP/EOQ if demand or cost changed substantially
-  var lead=p.lead||3;
-  p.rop=Math.max(1,Math.ceil(p.demand*lead*1.3));
-  var D=p.demand*365;var S=50;var H=Math.max(0.1,p.cost*0.2);
-  p.eoq=Math.max(1,Math.ceil(Math.sqrt(2*D*S/H)));
-  p.max=Math.max(p.max||100,p.stock*2,p.rop*3,100);
-  p.status=computeStatus(p);
+  recomputeAllStatus(); // demand/cost/price changes move ROP, EOQ and the whole catalog's ABC split
   saveProds();
   closeEditProd();
   toast('✅ Updated '+name,'green');
@@ -2523,6 +2493,7 @@ function submitDeleteProd(){
   if(!p){closeEditProd();return;}
   if(!confirm('Delete "'+p.name+'"? This cannot be undone.'))return;
   PRODS=PRODS.filter(function(x){return x.id!==editingProdId;});
+  recomputeAllStatus();
   saveProds();
   closeEditProd();
   toast('🗑 Deleted','green');
@@ -2536,6 +2507,7 @@ function quickDelete(id){
   if(!p)return;
   if(!confirm('Delete "'+p.name+'"?'))return;
   PRODS=PRODS.filter(function(x){return x.id!==id;});
+  recomputeAllStatus();
   saveProds();
   toast('🗑 Deleted','green');
   renderProdList();
@@ -2544,9 +2516,10 @@ function quickDelete(id){
 function markOrdered(id){
   var p=PRODS.find(function(x){return x.id===id;});
   if(!p)return;
-  p.incoming=(p.incoming||0)+(p.eoq||0);
+  var q=iqOrderQty(p);
+  p.incoming=(p.incoming||0)+q;
   saveProds();
-  toast('✅ Marked '+p.eoq+' units as ordered','green');
+  toast('✅ Marked '+q+' units as ordered','green');
   renderProdList();
 }
 
@@ -2611,48 +2584,12 @@ var AI_SYS = 'You are InventoryIQ AI, a senior inventory and supply-chain analys
  + 'by citing decision_intel.inventory_health with grade and revenue_at_risk in rupees, like an executive brief. '
  + 'Never use markdown.';
 
-/* ── DECISION ENGINE — deterministic (mockup weights, matches desktop) ── */
+/* ── DECISION ENGINE — deterministic; formulas in iq-core.js (iqHealth), shared with desktop ── */
 function aiDecisionIntel(){
-  var ps=PRODS||[];if(!ps.length)return null;
-  var invValue=0,cogsAnnual=0,excessValue=0,revRiskTotal=0;
-  var soNum=0,soDen=0,fillNum=0,fillDen=0,fcNum=0,fcDen=0,supNum=0,supDen=0;
-  var risks=[],opps=[],plan=[],revItems=[],dist={high:0,med:0,low:0};
-  ps.forEach(function(p){
-    var dd=Math.max(0.0001,(p.demand||0));
-    var f=(typeof forecastProduct==='function')?forecastProduct(p):{accuracy:Math.round((p.r2||0)*100)};
-    var acc=(f&&f.accuracy!=null)?f.accuracy:(p.acc!=null?p.acc:70);
-    var sell=p.sell||0,cost=p.cost||0,stock=p.stock||0,rop=p.rop||0,eoq=p.eoq||0,lead=p.lead||3;
-    invValue+=stock*cost; cogsAnnual+=dd*365*cost;
-    var excessU=Math.max(0,stock-(rop+eoq)),exVal=excessU*cost; excessValue+=exVal;
-    var cover=stock/dd, rev=sell*dd;
-    soNum+=Math.min(100,(cover/(lead*1.5))*100)*rev; soDen+=rev;
-    fillNum+=(stock>0?Math.min(100,rop>0?stock/rop*100:100):0)*dd; fillDen+=dd;
-    fcNum+=acc*dd; fcDen+=dd;
-    supNum+=Math.max(0,Math.min(100,(1-(lead-1)/13)*100))*dd; supDen+=dd;
-    var riskDays=Math.max(0,lead-cover), rr=Math.round(riskDays*dd*sell);
-    if(rr>0){revRiskTotal+=rr; revItems.push({name:p.name,ico:p.ico||'📦',amt:rr});}
-    var lvl=(stock<=rop*0.5||cover<lead)?'high':(stock<=rop)?'med':'low'; dist[lvl]++;
-    if(lvl!=='low')risks.push({name:p.name,ico:p.ico||'📦',cover:Math.round(cover*10)/10,lvl:lvl,amt:rr});
-    if(exVal>0)opps.push({name:p.name,ico:p.ico||'📦',amt:Math.round(exVal)});
-    if(stock<=rop)plan.push({name:p.name,ico:p.ico||'📦',qty:eoq||Math.max(1,rop*2-stock),cost:Math.round((eoq||1)*cost),cover:Math.round(cover*10)/10});
-  });
-  var stockout=soDen?soNum/soDen:100, service=fillDen?fillNum/fillDen:100, forecast=fcDen?fcNum/fcDen:70, supplier=supDen?supNum/supDen:80;
-  var excess=100-Math.min(100,invValue>0?excessValue/invValue*100:0);
-  var turnover=invValue>0?cogsAnnual/invValue:0;
-  var health=Math.max(0,Math.min(100,Math.round(0.30*stockout+0.25*excess+0.20*forecast+0.15*supplier+0.10*service)));
-  var grade=health>=85?'A':health>=75?'B':health>=65?'C':health>=55?'D':'E';
-  var prev=null;try{var raw=localStorage.getItem('iq_health_hist'),hist=raw?JSON.parse(raw):[],today=new Date().toISOString().slice(0,10);
-    if(!hist.length||hist[hist.length-1].d!==today){if(hist.length)prev=hist[hist.length-1].h;hist.push({d:today,h:health});while(hist.length>60)hist.shift();localStorage.setItem('iq_health_hist',JSON.stringify(hist));}
-    else if(hist.length>1)prev=hist[hist.length-2].h;}catch(e){}
-  revItems.sort(function(a,b){return b.amt-a.amt;});
-  risks.sort(function(a,b){return b.amt-a.amt||a.cover-b.cover;});
-  opps.sort(function(a,b){return b.amt-a.amt;});
-  plan.sort(function(a,b){return a.cover-b.cover;});
-  return {health:health,grade:grade,prev:prev,hist:hist,
-    sub:[['Stockout',Math.round(stockout)],['Excess',Math.round(excess)],['Forecast',Math.round(forecast)],['Supplier',Math.round(supplier)],['Service',Math.round(service)]],
-    invValue:Math.round(invValue),recoverable:Math.round(excessValue),revAtRisk:revRiskTotal,revItems:revItems.slice(0,4),
-    serviceLevel:Math.round(service),turnover:Math.round(turnover*10)/10,dio:turnover>0?Math.round(365/turnover):null,forecastAcc:Math.round(forecast),
-    risks:risks.slice(0,5),opps:opps.slice(0,4),plan:plan.slice(0,4),dist:dist};
+  var d=iqHealth(PRODS||[]);if(!d)return null;
+  var t=iqTrackHealth(d.health);d.prev=t.prev;d.hist=t.hist;
+  d.revItems=d.revItems.slice(0,4);d.risks=d.risks.slice(0,5);d.opps=d.opps.slice(0,4);d.plan=d.plan.slice(0,4);
+  return d;
 }
 function aiHealthColor(h){return h>=80?'#34D399':h>=70?'#FBBF24':h>=60?'#FB923C':'#F87171';}
 function aiRupee(n){return '₹'+Number(n||0).toLocaleString('en-IN');}
@@ -2670,7 +2607,7 @@ function renderCommandCenter(tid){
    +'<div style="flex:1"><div style="font-size:11px;color:#8B93B8;font-weight:700">INVENTORY HEALTH</div><div style="font-size:20px;font-weight:800;color:'+hc+'">Grade '+d.grade+'</div><div style="font-size:10px;margin-top:2px">'+deltaTxt+'</div></div></div>'
    +'<div style="margin-top:10px">'+subs.map(function(s){var c=aiHealthColor(s[1]);return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:9px;color:#8B93B8;width:58px">'+s[0]+'</span><div style="flex:1;height:5px;background:#232c46;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+s[1]+'%;background:'+c+'"></div></div><span style="font-size:9px;color:#cbd5e1;width:24px;text-align:right">'+s[1]+'</span></div>';}).join('')+'</div></div>';
   // root cause attribution
-  var W=[30,25,20,15,10];var gap=subs.reduce(function(a,s,i){return a+W[i]*(100-s[1]);},0)||1;
+  var W=IQ_HEALTH_W;var gap=subs.reduce(function(a,s,i){return a+W[i]*(100-s[1]);},0)||1;
   var attr=subs.map(function(s,i){return {name:s[0],pct:Math.round(W[i]*(100-s[1])/gap*100)};}).filter(function(a){return a.pct>0;}).sort(function(a,b){return b.pct-a.pct;});
   if(attr.length)h+='<div style="background:#13182A;border:1px solid #232c46;border-radius:12px;padding:12px;margin-bottom:10px"><div style="font-size:9px;font-weight:800;color:#9DC3FF;letter-spacing:.4px;margin-bottom:8px">🔍 WHY THIS SCORE?</div>'+attr.map(function(a){return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><span style="font-size:12px;font-weight:800;color:#F87171;width:34px">'+a.pct+'%</span><div style="flex:1;height:6px;background:#232c46;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+a.pct+'%;background:#F87171"></div></div><span style="font-size:10px;color:#cbd5e1;width:70px">'+a.name+'</span></div>';}).join('')+'</div>';
   // exec tiles
@@ -2682,7 +2619,7 @@ function renderCommandCenter(tid){
    +'<div style="flex:1;background:#13182A;border:1px solid #232c46;border-radius:12px;padding:11px;text-align:center"><div style="font-size:17px;font-weight:800;color:#fff">'+d.serviceLevel+'%</div><div style="font-size:8px;font-weight:800;color:#8B93B8;margin-top:2px">SERVICE</div></div>'
    +'<div style="flex:1;background:#13182A;border:1px solid #232c46;border-radius:12px;padding:11px;text-align:center"><div style="font-size:17px;font-weight:800;color:#fff">'+d.turnover+'×</div><div style="font-size:8px;font-weight:800;color:#8B93B8;margin-top:2px">TURNOVER</div></div>'
    +'<div style="flex:1;background:#13182A;border:1px solid #232c46;border-radius:12px;padding:11px;text-align:center"><div style="font-size:17px;font-weight:800;color:#fff">'+(d.dio!=null?d.dio:'–')+'</div><div style="font-size:8px;font-weight:800;color:#8B93B8;margin-top:2px">DAYS INV</div></div>'
-   +'<div style="flex:1;background:#13182A;border:1px solid #232c46;border-radius:12px;padding:11px;text-align:center"><div style="font-size:17px;font-weight:800;color:#fff">'+d.forecastAcc+'%</div><div style="font-size:8px;font-weight:800;color:#8B93B8;margin-top:2px">FORECAST</div></div>'
+   +'<div style="flex:1;background:#13182A;border:1px solid #232c46;border-radius:12px;padding:11px;text-align:center"><div style="font-size:17px;font-weight:800;color:#fff">'+(d.forecastAcc!=null?d.forecastAcc+'%':'—')+'</div><div style="font-size:8px;font-weight:800;color:#8B93B8;margin-top:2px">FORECAST</div></div>'
    +'</div>';
   // risks & opportunities
   h+='<div style="display:flex;gap:8px;margin-bottom:6px">';
@@ -2695,11 +2632,11 @@ function renderCommandCenter(tid){
 function aiBuildPayload(){
   var rank={critical:0,order:1,watch:2,good:3};
   var skus=(PRODS||[]).map(function(p){
-    var dd=p.forecast||p.demand||1;
-    return {name:p.name,class:p.cls,status:p.status,stock:p.stock,reorder_point:p.rop,eoq:p.eoq,
-      lead_time_days:p.lead,days_cover:dd>0?Math.round((p.stock/dd)*10)/10:null,
+    var f=iqForecast(p);
+    return {name:p.name,class:p.cls,status:p.status,stock:p.stock,reorder_point:p.rop,safety_stock:p.ss,eoq:p.eoq,order_qty:iqOrderQty(p),
+      lead_time_days:iqLead(p),daily_demand:iqD(p),days_cover:Math.round(iqCover(p)*10)/10,
       cost:p.cost,sell:p.sell,margin_pct:p.sell>0?Math.round((p.sell-p.cost)/p.sell*100):0,
-      forecast_next_day:p.forecast||null,forecast_trend:p.trend||null};
+      forecast_next_day:f.forecast,forecast_trend:f.trend,forecast_accuracy_pct:f.acc};
   }).sort(function(a,b){return (rank[a.status]||9)-(rank[b.status]||9);});
   var intel=aiDecisionIntel();
   return {decision_intel:intel?{inventory_health:intel.health,grade:intel.grade,sub_scores:intel.sub,revenue_at_risk:intel.revAtRisk,capital_locked:intel.invValue,recoverable_capital:intel.recoverable,service_level_pct:intel.serviceLevel,inventory_turnover:intel.turnover,forecast_accuracy_pct:intel.forecastAcc}:null,total_skus:skus.length,skus:skus.slice(0,25)};
@@ -2737,13 +2674,12 @@ function runLLMAdvisor(){
 }
 
 function aiReorderPlan(){
-  return (PRODS||[]).filter(function(p){return p.stock<=p.rop;})
+  return (PRODS||[]).filter(iqShouldOrder)
     .map(function(p){
-      var qty=p.eoq||Math.max(1,(p.rop*2)-p.stock);
-      var dd=p.forecast||p.demand||1;
+      var qty=iqOrderQty(p);
       return {name:p.name,ico:p.ico||'📦',qty:qty,cost:Math.round(qty*(p.cost||0)),
         supplier:p.supplier&&p.supplier!=='—'?p.supplier:'',
-        cover:dd>0?Math.round(p.stock/dd*10)/10:null,crit:p.stock<=p.rop*0.5};
+        cover:Math.round(iqCover(p)*10)/10,crit:p.status==='critical'};
     })
     .sort(function(a,b){return (a.cover==null?99:a.cover)-(b.cover==null?99:b.cover);});
 }

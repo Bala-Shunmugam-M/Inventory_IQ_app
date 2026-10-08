@@ -18,25 +18,24 @@ import {
   TextInput,
 } from 'react-native';
 import {
-  getDeviceId,
   loadDemo,
   clearAllData,
   loadSyncHistory,
   restoreSnapshot,
 } from '../lib/storage';
-import { syncToCloud, restoreFromCloud, isConfigured, getLastSyncTime } from '../lib/supabase';
+import { syncToCloud, restoreFromCloud, isConfigured, getLastSyncTime, getLinkCode } from '../lib/cloud';
 import { COLORS } from '../lib/theme';
 
 export default function MoreScreen({ navigation }) {
-  const [deviceId, setDeviceId] = useState('');
+  const [linkCode, setLinkCode] = useState(null);
   const [lastSync, setLastSync] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState([]);
   const [restoreOpen, setRestoreOpen] = useState(false);
-  const [restoreDeviceId, setRestoreDeviceId] = useState('');
+  const [restoreCode, setRestoreCode] = useState('');
 
   const refresh = useCallback(async () => {
-    setDeviceId(await getDeviceId());
+    setLinkCode(await getLinkCode());
     setLastSync(await getLastSyncTime());
     setHistory(await loadSyncHistory());
   }, []);
@@ -57,19 +56,19 @@ export default function MoreScreen({ navigation }) {
       '✅ Synced',
       result.mode === 'cloud'
         ? `Pushed ${result.count} products to cloud.`
-        : `Saved a local snapshot of ${result.count} products. Configure Supabase URL/key in src/lib/supabase.js for cross-device sync.`,
+        : `Saved a local snapshot of ${result.count} products. Set API_BASE in src/lib/cloud.js for cross-device sync.`,
     );
     refresh();
   };
 
   const doRestore = () => {
-    setRestoreDeviceId('');
+    setRestoreCode('');
     setRestoreOpen(true);
   };
 
   const submitRestore = async () => {
     setRestoreOpen(false);
-    const target = restoreDeviceId.trim();
+    const target = restoreCode.trim();
     const result = await restoreFromCloud(target);
     if (!result.ok) {
       Alert.alert('Restore failed', result.reason);
@@ -123,7 +122,7 @@ export default function MoreScreen({ navigation }) {
   const doClear = () => {
     Alert.alert(
       'Clear ALL data?',
-      'Products, sales, snapshots — everything except your Device ID. This cannot be undone.',
+      'Products, sales, snapshots — everything except your cloud link. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -151,12 +150,14 @@ export default function MoreScreen({ navigation }) {
       style={styles.container}
       contentContainerStyle={{ padding: 14, paddingBottom: 40 }}
     >
-      {/* Device ID card */}
+      {/* Store link code card */}
       <View style={styles.devCard}>
-        <Text style={styles.devLabel}>YOUR DEVICE ID</Text>
-        <Text style={styles.devId}>{deviceId}</Text>
+        <Text style={styles.devLabel}>STORE LINK CODE</Text>
+        <Text style={styles.devId} selectable>
+          {linkCode || 'Sync once to create your store'}
+        </Text>
         <Text style={styles.devHint}>
-          Share this ID across devices to sync data
+          Enter this on another device to share data. Keep it private — it works like a password.
         </Text>
       </View>
 
@@ -220,7 +221,7 @@ export default function MoreScreen({ navigation }) {
           Alert.alert(
             'Feature Status',
             '✅ Reorder engine (ROP · EOQ · ABC)\n✅ Demand forecast (LinReg + 7-day MA)\n' +
-              (isConfigured() ? '✅ Cloud sync (Supabase)' : '⚠️ Cloud sync — not configured') +
+              (isConfigured() ? '✅ Cloud sync (InventoryIQ backend)' : '⚠️ Cloud sync — not configured') +
               '\n\nPlanned, not in this build:\nDSE · VCR · EnergyGuard · FieldLock · SHA-256 integrity hash',
           )
         }
@@ -304,14 +305,14 @@ export default function MoreScreen({ navigation }) {
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>Restore from cloud</Text>
             <Text style={styles.modalSub}>
-              Enter Device ID to pull from, or leave blank to use this device.
+              Paste a store link code (iq1:…), or leave blank to pull this store's latest.
             </Text>
             <TextInput
               style={styles.restoreInput}
-              value={restoreDeviceId}
-              onChangeText={setRestoreDeviceId}
-              placeholder={deviceId || 'IQ-XXXXX-XXXXX'}
-              autoCapitalize="characters"
+              value={restoreCode}
+              onChangeText={setRestoreCode}
+              placeholder="iq1:IQ-…:…"
+              autoCapitalize="none"
               autoCorrect={false}
             />
             <View style={styles.restoreActions}>
