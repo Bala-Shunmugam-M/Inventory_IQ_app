@@ -12,6 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="InventoryIQ"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <link rel="apple-touch-icon" href="icon-192.png"/>
+<script src="iq-core.js"></script>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -107,6 +108,7 @@ html,body{
 }
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .toast.green{background:var(--green)}
+.toast.red{background:var(--red)}
 .toast.blue{background:var(--blue)}
 
 /* ════════════════════════════════════
@@ -1103,7 +1105,7 @@ html,body{
       </div>
       <div class="mi" onclick="showPatentStatus()">
         <div class="mi-ico" style="background:var(--surface)">🔬</div>
-        <div class="mi-info"><div class="mi-title">Features</div><div class="mi-sub" id="patentStatusSub">6 active · tap to view</div></div>
+        <div class="mi-info"><div class="mi-title">Features</div><div class="mi-sub" id="patentStatusSub">tap to view</div></div>
         <div class="mi-arr">›</div>
       </div>
     </div>
@@ -1120,8 +1122,7 @@ html,body{
 
     <!-- App version -->
     <div style="text-align:center;padding:10px 0 20px;font-size:10px;color:var(--light);font-weight:600">
-      InventoryIQ v8 · 6 Core Features<br>
-      <span style="font-size:9px">SHA-256 · VCR · DSE · PAP · EnergyGuard · FieldLock</span>
+      InventoryIQ v8.2 · decision-assistant inventory
     </div>
   </div>
 </div>
@@ -1260,15 +1261,6 @@ var DEVICE_KEY='iq_device_id';
 var DISMISSED_KEY='inventoryiq_v8_dismissed';
 var SYNC_HIST_KEY='inventoryiq_v8_synchist';
 
-function getDeviceId(){
-  var d=localStorage.getItem(DEVICE_KEY);
-  if(!d){
-    d='IQ-'+Math.random().toString(36).slice(2,7).toUpperCase()+'-'+Math.random().toString(36).slice(2,7).toUpperCase();
-    try{localStorage.setItem(DEVICE_KEY,d);}catch(e){}
-  }
-  return d;
-}
-
 function saveProds(){
   try{
     localStorage.setItem(STORAGE_KEY,JSON.stringify(PRODS));
@@ -1281,7 +1273,7 @@ function loadProds(){
     var raw=localStorage.getItem(STORAGE_KEY);
     if(!raw)return null;
     var arr=JSON.parse(raw);
-    return Array.isArray(arr)?arr:null;
+    return Array.isArray(arr)?iqClean(arr):null;
   }catch(e){return null;}
 }
 
@@ -1296,7 +1288,7 @@ function saveSalesLog(entry){
 }
 
 function loadSalesLog(){
-  try{var raw=localStorage.getItem(SALES_KEY);return raw?JSON.parse(raw):[];}catch(e){return [];}
+  try{var raw=localStorage.getItem(SALES_KEY);return raw?iqScrub(JSON.parse(raw)):[];}catch(e){return [];}
 }
 
 function saveDismissed(){try{localStorage.setItem(DISMISSED_KEY,JSON.stringify(dismissed));}catch(e){}}
@@ -1516,9 +1508,7 @@ function initForecast(){
   if(!PRODS.length){box.innerHTML='<div style="text-align:center;padding:40px;color:var(--muted)"><div style="font-size:40px">📈</div><div style="font-weight:800;color:var(--ink);margin:8px">No data</div><div style="font-size:12px">Add products or load demo to see forecasts.</div></div>';return;}
   var h=(PRODS||[]).map(function(p){
     var hist=Array.isArray(p.history)?p.history:[];
-    var fc=p.forecast!=null?p.forecast:(hist.length?Math.round(hist.slice(-7).reduce(function(a,b){return a+b;},0)/Math.min(7,hist.length)):(p.demand||0));
-    var acc=p.acc!=null?p.acc:(p.r2!=null?Math.round(p.r2):0);
-    var trend=p.trend||'flat',tpct=p.trendPct||0,ci=p.ci||0;
+    var f=iqForecast(p),fc=f.forecast,acc=f.acc,trend=f.trend,tpct=f.trendPct,ci=f.ci;
     var tc=trend==='up'?'var(--red)':trend==='down'?'var(--green)':'var(--blue)';
     var tIco=trend==='up'?'📈':trend==='down'?'📉':'➡️';
     var tLbl=trend==='up'?'Rising':trend==='down'?'Falling':'Stable';
@@ -1787,7 +1777,7 @@ function initHome(){
   var urgent=PRODS.filter(function(p){return p.status!=='good';});
   var tp=PRODS.reduce(function(s,p){return s+(p.sell-p.cost)*Math.round(p.demand*.7);},0);
   document.getElementById('hPft').textContent='₹'+Math.round(tp/1000)+'K';
-  document.getElementById('hAlr').textContent=urgent.filter(function(p){return !dismissed[p.id];}).length;
+  document.getElementById('hAlr').textContent=PRODS.filter(iqNeedsAction).length;
   var gc=PRODS.filter(function(p){return p.status==='good';}).length;
   var wc=PRODS.filter(function(p){return p.status==='watch';}).length;
   var cc=PRODS.filter(function(p){return p.status==='critical'||p.status==='order';}).length;
@@ -1828,7 +1818,7 @@ function renderHomeCards(){
       +'</div>';
     return;
   }
-  var urgent=PRODS.filter(function(p){return p.status!=='good'&&!dismissed[p.id];});
+  var urgent=PRODS.filter(iqNeedsAction);
   if(!urgent.length){
     el.innerHTML='<div style="text-align:center;padding:20px;font-size:12px;font-weight:600;color:var(--muted)">🎉 All clear — nothing to action today!</div>';
     return;
@@ -1865,7 +1855,7 @@ function addSwipe(wrap,id){
   var sx=0,cx=0,drag=false,THR=-80;
   function start(e){sx=(e.touches?e.touches[0].clientX:e.clientX);drag=true;card.style.transition='none';}
   function move(e){if(!drag)return;cx=(e.touches?e.touches[0].clientX:e.clientX)-sx;if(cx>0)cx=0;card.style.transform='translateX('+cx+'px)';behind.style.opacity=Math.min(1,Math.abs(cx)/80);if(Math.abs(cx)>6)e.preventDefault();}
-  function end(){if(!drag)return;drag=false;card.style.transition='transform .28s cubic-bezier(.4,0,.2,1)';if(cx<THR){card.style.transform='translateX(-110%)';behind.style.opacity='1';setTimeout(function(){dismissed[id]=true;saveDismissed();renderHomeCards();document.getElementById('hAlr').textContent=PRODS.filter(function(p){return p.status!=='good'&&!dismissed[p.id];}).length;toast('✓ Marked as ordered!');},280);}else{card.style.transform='translateX(0)';behind.style.opacity='0';}cx=0;}
+  function end(){if(!drag)return;drag=false;card.style.transition='transform .28s cubic-bezier(.4,0,.2,1)';if(cx<THR){card.style.transform='translateX(-110%)';behind.style.opacity='1';setTimeout(function(){markOrdered(id);renderHomeCards();document.getElementById('hAlr').textContent=PRODS.filter(iqNeedsAction).length;},280);}else{card.style.transform='translateX(0)';behind.style.opacity='0';}cx=0;}
   card.addEventListener('touchstart',start,{passive:true});
   card.addEventListener('touchmove',move,{passive:false});
   card.addEventListener('touchend',end);
@@ -1934,7 +1924,7 @@ function renderProdList(){
     var pct=Math.round((p.stock/p.max)*100);
     var bc=p.stock===0?'out':p.status==='critical'||p.status==='order'?'lo':p.status==='watch'?'wa':'ok';
     var sl=p.stock===0?'OUT':p.status==='critical'?'CRITICAL':p.status==='order'?'LOW STOCK':p.status==='watch'?'WATCH':'IN STOCK';
-    var inc=p.incoming>0?'<div class="inc-b">📦 +'+p.incoming+' arriving</div>':'';
+    var inc=p.incoming>0?'<div class="inc-b" onclick="event.stopPropagation();receiveStock('+p.id+')" style="cursor:pointer">📦 +'+p.incoming+' arriving · tap when received</div>':'';
     var wrap=document.createElement('div');
     wrap.className='pi-wrap';
     wrap.innerHTML='<div class="pi-behind"><div class="pi-ab e" onclick="event.stopPropagation();openEditProd('+p.id+')">✏️</div><div class="pi-ab o" onclick="event.stopPropagation();markOrdered('+p.id+')">📦</div><div class="pi-ab d" onclick="event.stopPropagation();quickDelete('+p.id+')">🗑</div></div>'
@@ -2053,9 +2043,7 @@ function doSave(){
     revenue+=q*p.sell;
     p.stock=Math.max(0,p.stock-q);
     // append to product history (keep last 60 days)
-    if(!Array.isArray(p.history))p.history=[];
-    p.history.push(q);
-    if(p.history.length>60)p.history=p.history.slice(-60);
+    iqLogSale(p,q);
     lines.push({id:p.id,name:p.name,qty:q,revenue:q*p.sell,profit:q*(p.sell-p.cost)});
   });
   // recompute statuses after stock change
@@ -2213,7 +2201,7 @@ function initMore(){
   // Patent status
   var sha=window.isSecureContext&&typeof crypto!=='undefined'&&typeof crypto.subtle!=='undefined';
   var pSub=document.getElementById('patentStatusSub');
-  if(pSub)pSub.textContent=(sha?'SHA-256':'FNV-1a')+' · VCR · DSE · PAP · All 6 active';
+  if(pSub)pSub.textContent=iqFeatures().filter(function(f){return f.ok;}).length+' active · tap to view';
   // Sync status
   var ss=document.getElementById('syncStatus');
   if(ss){var lastSync=localStorage.getItem('iq_last_sync');ss.textContent=lastSync?'Last synced: '+new Date(parseInt(lastSync)).toLocaleString():'Not yet synced — tap to sync';}
@@ -2230,36 +2218,28 @@ function doSyncCloud(){
     if(h.length>5)h=h.slice(-5);
     localStorage.setItem(SYNC_HIST_KEY,JSON.stringify(h));
   }catch(e){}
-  // Snapshot to localStorage as simulated cloud
-  var snapshot={data:PRODS,timestamp:Date.now(),deviceId:getDeviceId()};
-  try{localStorage.setItem('iq_cloud_snapshot',JSON.stringify(snapshot));}catch(e){}
-  localStorage.setItem('iq_last_sync',Date.now().toString());
-  setTimeout(function(){
-    if(ss)ss.textContent='Last synced: '+new Date().toLocaleString();
-    toast('✅ Synced! '+PRODS.length+' products saved','green');
+  iqPush(PRODS,loadSalesLog()).then(function(r){
+    localStorage.setItem('iq_last_sync',Date.now().toString());
+    toast(r.mode==='cloud'?'✅ Synced '+PRODS.length+' products to cloud':'💾 Saved on this device only — cloud sync not configured','green');
     initMore();
-  },800);
+  }).catch(function(e){if(ss)ss.textContent='Sync failed — tap to retry';toast('Sync failed: '+e.message,'red');});
 }
 
 function doRestoreCloud(){
   var id=prompt('Enter the Device ID to restore from (or leave blank to use this device):');
-  // Check local snapshot
-  var snap=localStorage.getItem('iq_cloud_snapshot');
-  if(!snap){toast('No cloud data found');return;}
-  try{
-    var data=JSON.parse(snap);
-    if(id&&id.trim()&&data.deviceId&&data.deviceId!==id.trim()){
-      if(!confirm('Device ID does not match. Restore anyway?'))return;
-    }
-    if(confirm('Found '+data.data.length+' products from '+new Date(data.timestamp).toLocaleString()+'. Restore? This replaces current data.')){
-      PRODS=data.data||[];
-      recomputeAllStatus();
-      saveProds();
-      toast('✅ Restored '+PRODS.length+' products','green');
-      initMore();
-      if(curScreen==='home')initHome();
-    }
-  }catch(e){toast('Restore failed — invalid data');}
+  if(id===null)return;
+  iqPull(id).then(function(snap){
+    if(!snap||!snap.data.length){toast(iqCloudReady()?'No data found for that Device ID':'No snapshot saved on this device');return;}
+    if(snap.mode==='local'&&id.trim()&&snap.deviceId!==id.trim().toUpperCase()){toast('Cloud sync not configured — can only restore this device\'s snapshot','red');return;}
+    if(!confirm('Found '+snap.data.length+' products from '+new Date(snap.ts).toLocaleString()+'. Restore? This replaces current data.'))return;
+    PRODS=snap.data;
+    recomputeAllStatus();
+    saveProds();
+    if(snap.sales){try{localStorage.setItem(SALES_KEY,JSON.stringify(snap.sales));}catch(e){}}
+    toast('✅ Restored '+PRODS.length+' products','green');
+    initMore();
+    if(curScreen==='home')initHome();
+  }).catch(function(e){toast('Restore failed: '+e.message,'red');});
 }
 
 function showSyncHistory(){
@@ -2302,14 +2282,7 @@ function restoreSnapshot(idx){
 function showPatentStatus(){
   var sha=window.isSecureContext&&typeof crypto!=='undefined'&&typeof crypto.subtle!=='undefined';
   var body=document.getElementById('bsheet-body');
-  var innovations=[
-    {n:'DSE — Delta Sync Engine',d:'Only changed products transmitted. Saves bandwidth.',ok:true},
-    {n:'VCR — Vector Clock Resolver',d:'Conflict-free merge across devices.',ok:true},
-    {n:'PAP — Predictive Auto-Purchase',d:'EOQ + ROP auto-calculation engine.',ok:true},
-    {n:'SHA-256 Integrity',d:sha?'Web Crypto API active (HTTPS)':'FNV-1a fallback (HTTP)',ok:sha},
-    {n:'EnergyGuard',d:'Batches writes, skips sync on low battery.',ok:true},
-    {n:'FieldLock CAS',d:'Concurrent edit protection via schema versioning.',ok:true},
-  ];
+  var innovations=iqFeatures();
   var rows=innovations.map(function(inn){
     return '<div style="display:flex;align-items:flex-start;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)">'
       +'<div style="width:22px;height:22px;border-radius:6px;background:'+(inn.ok?'var(--green-l)':'var(--amber-l)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px">'+(inn.ok?'✅':'⚠️')+'</div>'
@@ -2345,7 +2318,7 @@ function restoreBackup(){
         var data=JSON.parse(ev.target.result);
         if(!data.products||!Array.isArray(data.products))throw 'invalid';
         if(!confirm('Restore '+data.products.length+' products from backup? This replaces current data.'))return;
-        PRODS=data.products;
+        PRODS=iqClean(data.products);
         recomputeAllStatus();
         saveProds();
         if(data.sales&&Array.isArray(data.sales)){try{localStorage.setItem(SALES_KEY,JSON.stringify(data.sales));}catch(e){}}
@@ -2574,6 +2547,17 @@ function markOrdered(id){
   p.incoming=(p.incoming||0)+(p.eoq||0);
   saveProds();
   toast('✅ Marked '+p.eoq+' units as ordered','green');
+  renderProdList();
+}
+
+function receiveStock(id){
+  var p=PRODS.find(function(x){return x.id===id;});
+  if(!p||!p.incoming)return;
+  var n=p.incoming;
+  iqReceive(p);
+  recomputeAllStatus();
+  saveProds();
+  toast('📥 Received '+n+' units of '+p.name,'green');
   renderProdList();
 }
 

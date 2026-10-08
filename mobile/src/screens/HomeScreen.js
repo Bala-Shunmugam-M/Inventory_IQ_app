@@ -3,7 +3,8 @@
  *
  * The daily action list. Shows products needing attention (critical / order /
  * watch) with quick-action buttons, plus three KPIs: Today's Profit, Stock
- * Value, Health %. Dismiss any card by swiping or tapping ✓ Marked Ordered.
+ * Value, Health %. "Mark Ordered" records the order as incoming stock, which
+ * hides the card until the order is received or turns out to be too small.
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -14,26 +15,23 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   loadProducts,
   aggregateKPIs,
   loadDemo,
-  KEYS,
+  markOrdered,
+  needsAction,
 } from '../lib/storage';
 import { COLORS, STATUS_LABEL, STATUS_COLORS } from '../lib/theme';
 
 export default function HomeScreen({ navigation }) {
   const [products, setProducts] = useState([]);
-  const [dismissed, setDismissed] = useState({});
   const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
     const list = await loadProducts();
     setProducts(list);
-    const dRaw = await AsyncStorage.getItem(KEYS.DISMISSED);
-    setDismissed(dRaw ? JSON.parse(dRaw) : {});
     setRefreshing(false);
   }, []);
 
@@ -43,10 +41,9 @@ export default function HomeScreen({ navigation }) {
     return unsub;
   }, [navigation, refresh]);
 
-  const dismiss = async (id) => {
-    const next = { ...dismissed, [id]: true };
-    setDismissed(next);
-    await AsyncStorage.setItem(KEYS.DISMISSED, JSON.stringify(next));
+  const order = async (id) => {
+    await markOrdered(id);
+    await refresh();
   };
 
   const handleLoadDemo = async () => {
@@ -55,9 +52,7 @@ export default function HomeScreen({ navigation }) {
   };
 
   const kpi = aggregateKPIs(products);
-  const urgent = products.filter(
-    (p) => p.status !== 'good' && !dismissed[p.id],
-  );
+  const urgent = products.filter(needsAction);
   const sortedUrgent = urgent.sort((a, b) => {
     const order = { critical: 0, order: 1, watch: 2 };
     return (order[a.status] || 3) - (order[b.status] || 3);
@@ -176,6 +171,7 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.actionName}>{p.name}</Text>
               <Text style={styles.actionMeta}>
                 Stock: {p.stock} · ROP: {p.rop} · Order {p.eoq} units
+                {p.incoming > 0 ? ` · ${p.incoming} on order` : ''}
               </Text>
             </View>
             <View
@@ -197,9 +193,9 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.actionBtnRow}>
             <TouchableOpacity
               style={styles.actionDismiss}
-              onPress={() => dismiss(p.id)}
+              onPress={() => order(p.id)}
             >
-              <Text style={styles.actionDismissText}>✓ Marked Ordered</Text>
+              <Text style={styles.actionDismissText}>✓ Mark Ordered</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.actionView}

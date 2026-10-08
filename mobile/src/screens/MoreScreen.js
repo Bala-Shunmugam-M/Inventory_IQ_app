@@ -209,17 +209,19 @@ export default function MoreScreen({ navigation }) {
         }
       />
 
-      <Text style={styles.sectionLabel}>PATENT</Text>
+      <Text style={styles.sectionLabel}>FEATURES</Text>
 
       <SettingItem
         icon="🔬"
         bg={COLORS.purpleLight}
-        title="Patent Status"
-        sub="6 innovations · DSE · VCR · PAP · EnergyGuard · FieldLock · SHA-256"
+        title="Feature Status"
+        sub="What this build does today"
         onPress={() =>
           Alert.alert(
-            'Patent Innovations',
-            '1. DSE — Differential Sync Engine\n2. VCR — Vector Clock Resolver\n3. PAP — Predictive Analytics Pre-fetcher\n4. EnergyGuard — Battery-aware Scheduler\n5. FieldLock — Field-level Concurrency Lock\n6. SHA-256 — Cryptographic Integrity Hash\n\nAll 6 innovations active in this build.',
+            'Feature Status',
+            '✅ Reorder engine (ROP · EOQ · ABC)\n✅ Demand forecast (LinReg + 7-day MA)\n' +
+              (isConfigured() ? '✅ Cloud sync (Supabase)' : '⚠️ Cloud sync — not configured') +
+              '\n\nPlanned, not in this build:\nDSE · VCR · EnergyGuard · FieldLock · SHA-256 integrity hash',
           )
         }
       />
@@ -236,8 +238,7 @@ export default function MoreScreen({ navigation }) {
       />
 
       <Text style={styles.footer}>
-        InventoryIQ v8.1 — Patent Edition{'\n'}
-        6 innovations · SHA-256 · VCR · DSE · PAP · EnergyGuard · FieldLock
+        InventoryIQ v8.2
       </Text>
 
       {/* History modal */}

@@ -51,32 +51,23 @@ The app works fully without this. Skip if you don't need cross-device sync yet.
 
 1. Create a project at supabase.com (free tier, no credit card)
 
-2. Open SQL Editor → paste and run:
-
-```sql
-create table if not exists inventory_v8 (
-  device_id   text primary key,
-  data        jsonb not null,
-  sales_log   jsonb,
-  updated_at  timestamptz default now()
-);
-alter table inventory_v8 enable row level security;
-create policy "anon read"   on inventory_v8 for select using (true);
-create policy "anon write"  on inventory_v8 for insert with check (true);
-create policy "anon update" on inventory_v8 for update using (true) with check (true);
-```
+2. Open SQL Editor, paste the contents of `supabase/schema.sql` from this repo, and run it.
+   (Safe to re-run; it also removes the insecure policies older versions of this guide created.)
 
 3. Project Settings → API → copy your **Project URL** and **anon public key**
 
 4. Paste them in **two places**:
 
-   **`mobile/src/lib/supabase.js`** (lines near the top):
+   **`docs/iq-core.js`** (web + dashboard):
+   ```js
+   var IQ_CLOUD = { url: 'https://YOUR-PROJECT.supabase.co', key: 'eyJhbGciOi…' };
+   ```
+
+   **`mobile/src/lib/supabase.js`** (APK):
    ```js
    export const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
    export const SUPABASE_KEY = 'eyJhbGciOi…';
    ```
-
-   **`docs/index.html`** and **`docs/dashboard.html`** — currently the web build uses local snapshot mode. If you want web→cloud sync, search for `iq_cloud_snapshot` in those files and adapt the sync function to also POST to your Supabase REST endpoint. The mobile build does this automatically.
 
 5. Push again. Sync now works cross-device using Device ID.
 
@@ -122,7 +113,7 @@ If any of these fail, check the browser console — the keys to look for are `in
 | `eas build` says "no project ID" | Run `eas init` first. Accept the default project name. |
 | APK installs but shows blank screen | Run `npx expo doctor` in `mobile/` — usually a dependency mismatch. |
 | Mobile and dashboard don't share data | They only share data **on the same device/browser** because both use that browser's `localStorage`. Cross-device sync requires Supabase setup (Step 4). |
-| "Sync to Cloud" says "Saved a local snapshot" | Supabase URL/key not configured — this is the offline fallback, not an error. |
+| "Sync to Cloud" says "Saved on this device only" | Supabase URL/key not configured — this is the offline fallback, not an error. |
 | APK build fails on first run | Most often missing `mobile/assets/icon.png` and `splash.png`. Drop any 1024×1024 PNG named `icon.png` and any 1242×2436 PNG named `splash.png` into `mobile/assets/`. |
 
 ---

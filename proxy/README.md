@@ -18,14 +18,17 @@ Wrangler prints a URL like `https://inventoryiq-llm-proxy.<you>.workers.dev`.
 
 ## Point the app at it
 
-In `mobile/src/lib/ai.js`:
+In `docs/index.html` and `docs/dashboard.html`, set `AI_CFG.proxy` to the worker
+URL and leave `AI_CFG.apiKey` empty — no key ships in the page.
 
-```js
-export const AI_PROXY_URL = 'https://inventoryiq-llm-proxy.<you>.workers.dev';
-```
+## What the worker enforces
 
-Leave `AI_API_KEY` empty — when `AI_PROXY_URL` is set, the app uses the proxy
-and no key ships in the build.
+- Only origins in `ALLOWED_ORIGINS` (your GitHub Pages origin) are served.
+  Add `http://localhost:<port>` there for local testing.
+- Model is pinned (`MODEL`), `max_tokens` capped at 2000, body capped at 64 KB.
+- 20 requests / minute per IP via the `LIMITER` binding in `wrangler.toml`.
+
+Origin checks only stop browsers; the rate limit is what stops scripts.
 
 ## Switch provider
 

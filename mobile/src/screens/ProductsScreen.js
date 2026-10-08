@@ -23,6 +23,7 @@ import {
   addProduct,
   updateProduct,
   deleteProduct,
+  receiveStock,
   buildProduct,
   loadDemo,
 } from '../lib/storage';
@@ -428,7 +429,14 @@ export default function ProductsScreen({ navigation, route }) {
               </View>
 
               {p.incoming > 0 && (
-                <Text style={styles.incoming}>📦 +{p.incoming} arriving</Text>
+                <TouchableOpacity
+                  onPress={async () => {
+                    await receiveStock(p.id);
+                    await refresh();
+                  }}
+                >
+                  <Text style={styles.incoming}>📦 +{p.incoming} arriving · tap when received</Text>
+                </TouchableOpacity>
               )}
             </TouchableOpacity>
           );

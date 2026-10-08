@@ -1,6 +1,6 @@
 /* InventoryIQ service worker — minimal offline shell for PWA / APK packaging */
-var CACHE='iq-v2-2';
-var CORE=['index.html','dashboard.html','manifest.webmanifest'];
+var CACHE='iq-v3';
+var CORE=['index.html','dashboard.html','iq-core.js','manifest.webmanifest'];
 self.addEventListener('install',function(e){
   self.skipWaiting();
   e.waitUntil(caches.open(CACHE).then(function(c){return c.addAll(CORE).catch(function(){});}));

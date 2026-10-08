@@ -35,7 +35,9 @@ export const KEYS = {
 export async function getDeviceId() {
   let id = await AsyncStorage.getItem(KEYS.DEVICE);
   if (!id) {
-    const r = () => Math.random().toString(36).slice(2, 7).toUpperCase();
+    // ponytail: Math.random, not a CSPRNG — RN has no crypto.getRandomValues without adding expo-crypto.
+    // The ID is the cloud-sync password, so switch to expo-crypto if sync goes beyond a demo.
+    const r = () => Math.random().toString(36).slice(2, 7).toUpperCase().padEnd(5, '0');
     id = `IQ-${r()}-${r()}`;
     await AsyncStorage.setItem(KEYS.DEVICE, id);
   }
@@ -195,6 +197,7 @@ export async function recordSales(qtyMap) {
     totalRevenue = 0,
     totalProfit = 0;
   const lines = [];
+  const today = localDay();
   const updated = products.map((p) => {
     const q = qtyMap[p.id] || 0;
     if (q <= 0) return p;
@@ -209,9 +212,7 @@ export async function recordSales(qtyMap) {
       revenue: sold * p.sell,
       profit: sold * (p.sell - p.cost),
     });
-    const history = Array.isArray(p.history) ? [...p.history, sold] : [sold];
-    if (history.length > 60) history.splice(0, history.length - 60);
-    const next = { ...p, stock: Math.max(0, p.stock - sold), history };
+    const next = { ...p, stock: Math.max(0, p.stock - sold), ...logDailySale(p, sold, today) };
     next.status = computeStatus(next);
     return next;
   });
@@ -231,6 +232,39 @@ export async function recordSales(qtyMap) {
   if (log.length > 365) log.splice(0, log.length - 365);
   await AsyncStorage.setItem(KEYS.SALES, JSON.stringify(log));
   return entry;
+}
+
+// history[] feeds the forecast as units per DAY, so a second save on the same
+// day adds to today's bucket instead of looking like a new day.
+// ponytail: unlogged days are skipped, not zero-filled — a forgotten entry shouldn't read as zero demand.
+export function localDay(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+export function logDailySale(p, qty, today) {
+  const history = Array.isArray(p.history) ? [...p.history] : [];
+  if (p.histDay === today && history.length) history[history.length - 1] += qty;
+  else history.push(qty);
+  return { history: history.slice(-60), histDay: today };
+}
+
+// ============================================================
+// ORDERING — decide on inventory position (on hand + already ordered)
+// ============================================================
+export function needsAction(p) {
+  return p.status !== 'good' && p.stock + (p.incoming || 0) <= p.rop * 1.4;
+}
+
+export async function markOrdered(id) {
+  const p = (await loadProducts()).find((x) => x.id === id);
+  if (!p) return null;
+  return updateProduct(id, { incoming: (p.incoming || 0) + (p.eoq || 0) });
+}
+
+export async function receiveStock(id) {
+  const p = (await loadProducts()).find((x) => x.id === id);
+  if (!p || !p.incoming) return null;
+  const stock = p.stock + p.incoming;
+  return updateProduct(id, { stock, incoming: 0, max: Math.max(p.max || 0, stock) });
 }
 
 // ============================================================

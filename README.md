@@ -1,4 +1,4 @@
-# InventoryIQ — v8 Patent Edition
+# InventoryIQ — v8.2
 
 > Decision-assistant inventory app for kirana shops and small retailers.
 > Tells you exactly what to order today, instead of showing numbers and formulas.
@@ -15,7 +15,8 @@
 repo/
 ├── docs/
 │   ├── index.html        ← mobile web app (GitHub Pages serves this)
-│   └── dashboard.html    ← desktop manager dashboard
+│   ├── dashboard.html    ← desktop manager dashboard
+│   └── iq-core.js        ← shared by both: data hygiene, forecast, ordering, cloud sync
 ├── mobile/               ← React Native source for Android APK
 │   ├── App.js
 │   ├── app.json
@@ -33,6 +34,9 @@ repo/
 │           ├── ProductsScreen.js
 │           ├── ForecastScreen.js
 │           └── MoreScreen.js
+├── proxy/                ← Cloudflare Worker that holds the Groq key for the AI Advisor
+├── supabase/schema.sql   ← cloud sync schema (run once in Supabase)
+├── tests/check.mjs       ← self-check: node tests/check.mjs
 ├── .gitignore
 ├── README.md
 └── DEPLOY.md
@@ -54,16 +58,18 @@ All three use the same key namespace (`inventoryiq_v8_*`), so when you sync a ph
 
 ---
 
-## Six patent innovations — all active in this build
+## What's implemented
 
-1. **DSE — Differential Sync Engine** — only changed records transmitted (~80% bandwidth reduction)
-2. **VCR — Vector Clock Resolver** — three-phase deterministic merge for offline-first clients
-3. **PAP — Predictive Analytics Pre-fetcher** — speculative computation during `requestIdleCallback`
-4. **EnergyGuard** — gates pre-fetch via `navigator.getBattery()`
-5. **FieldLock + CLOCK_OFFSET** — NTP-style clock sync with sub-field-level mutex
-6. **SHA-256 Integrity Hash** — Web Crypto API with FNV-1a fallback + auto-rollback
+- **Reorder engine** — reorder point (ROP), economic order quantity (EOQ) and ABC class per product.
+- **Demand forecast** — linear regression blended with a 7-day moving average over daily sales.
+- **Ordering loop** — "Mark ordered" records incoming stock; tap the incoming badge (or Receive) when it arrives.
+  Today's action list uses inventory position (on hand + on order), so ordered items stop nagging.
+- **Cloud sync** (optional) — full snapshot push/pull through Supabase, keyed by Device ID.
+- **AI Advisor** — LLM explains the locally computed numbers; it never invents them.
 
-See `docs/index.html` "More → Patent Status" or the patent docx in your records for the full 16-claim filing.
+The patent filing describes further mechanisms (DSE delta sync, VCR vector-clock merge,
+EnergyGuard, FieldLock, SHA-256 integrity hash). **They are not implemented in this
+codebase yet**; the in-app Feature Status screen lists them as planned.
 
 ---
 
@@ -98,24 +104,24 @@ The app works fully offline. To enable cross-device sync:
 1. Create a free Supabase project at supabase.com
 2. Run this SQL once:
 
-```sql
-create table if not exists inventory_v8 (
-  device_id   text primary key,
-  data        jsonb not null,
-  sales_log   jsonb,
-  updated_at  timestamptz default now()
-);
-alter table inventory_v8 enable row level security;
-create policy "anon read"   on inventory_v8 for select using (true);
-create policy "anon write"  on inventory_v8 for insert with check (true);
-create policy "anon update" on inventory_v8 for update using (true) with check (true);
-```
+Open `supabase/schema.sql`, paste it into Supabase → SQL Editor, and run it.
 
-3. Paste your project URL and anon key into `mobile/src/lib/supabase.js` (and the matching `<script>` block at the top of `docs/index.html` and `docs/dashboard.html` if you want web sync too)
+3. Paste your project URL and anon/publishable key into `IQ_CLOUD` in `docs/iq-core.js` (web) and `mobile/src/lib/supabase.js` (APK)
 
 4. Rebuild — sync now works across devices via Device ID.
 
-If the keys are left empty, **the app still works** — Sync to Cloud silently saves a local snapshot you can roll back to. No errors, no dialogs.
+If the keys are left empty, **the app still works** — Sync to Cloud saves a snapshot on this device and says so.
+
+**Security:** the schema gives the anon key no direct table access; data is only reachable through
+`iq_push` / `iq_pull` with an exact Device ID. The Device ID is effectively the store's password —
+don't post it publicly. (Earlier versions of this README created policies that let anyone list every
+store's data; re-running `schema.sql` removes them.)
+
+## Checks
+
+```bash
+node tests/check.mjs
+```
 
 ---
 

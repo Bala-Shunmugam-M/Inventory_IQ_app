@@ -8,28 +8,12 @@
  *
  * Setup:
  *   1) Create a Supabase project at supabase.com (free tier is fine)
- *   2) Run this SQL in the SQL editor:
+ *   2) Run ../../../supabase/schema.sql in the SQL editor
+ *   3) Paste your project URL and anon/publishable key below and rebuild.
  *
- *      create table if not exists inventory_v8 (
- *        device_id   text primary key,
- *        data        jsonb not null,
- *        sales_log   jsonb,
- *        updated_at  timestamptz default now()
- *      );
- *      alter table inventory_v8 enable row level security;
- *      create policy "anon read"  on inventory_v8 for select using (true);
- *      create policy "anon write" on inventory_v8 for insert with check (true);
- *      create policy "anon update" on inventory_v8 for update using (true) with check (true);
- *
- *   3) Paste your project URL and anon key below and rebuild.
- *
- * Why this is safe even with anon-write policies:
- *   The primary key is the device-generated ID (IQ-xxxxx-xxxxx), so writes
- *   are namespaced per device. There is no PII or cross-tenant data; another
- *   user could only see your row if they guessed your 25-character device ID.
- *   For production you would tighten RLS to require an auth.jwt() — this
- *   demo configuration is intentionally simple so the patent demo works
- *   without sign-in.
+ * The anon key is safe to ship: the schema blocks direct table access and
+ * only exposes iq_push / iq_pull, keyed by an exact Device ID. The Device ID
+ * is therefore the password to a store's data — don't share it publicly.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -50,19 +34,23 @@ import {
 export const SUPABASE_URL = '';
 export const SUPABASE_KEY = '';
 
-const TABLE = 'inventory_v8';
-
 function isCloudConfigured() {
   return !!(SUPABASE_URL && SUPABASE_KEY);
 }
 
-function authHeaders() {
-  return {
-    apikey: SUPABASE_KEY,
-    Authorization: `Bearer ${SUPABASE_KEY}`,
-    'Content-Type': 'application/json',
-    Prefer: 'return=representation',
-  };
+async function rpc(fn, body) {
+  const res = await fetch(`${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const txt = await res.text();
+  if (!res.ok) throw new Error(`Supabase ${res.status}: ${txt.slice(0, 120)}`);
+  return txt ? JSON.parse(txt) : null;
 }
 
 // ============================================================
@@ -79,13 +67,6 @@ export async function syncToCloud() {
 
   const deviceId = await getDeviceId();
   const sales = await loadSalesLog();
-  const payload = {
-    device_id: deviceId,
-    data: products,
-    sales_log: sales,
-    updated_at: new Date().toISOString(),
-  };
-
   if (!isCloudConfigured()) {
     // Fallback: store the snapshot in AsyncStorage as a "local cloud"
     await AsyncStorage.setItem(
@@ -108,19 +89,11 @@ export async function syncToCloud() {
   }
 
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}`, {
-      method: 'POST',
-      headers: { ...authHeaders(), Prefer: 'resolution=merge-duplicates' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const txt = await res.text();
-      return { ok: false, reason: `Supabase ${res.status}: ${txt}` };
-    }
+    await rpc('iq_push', { p_device_id: deviceId, p_data: products, p_sales: sales });
     await AsyncStorage.setItem(KEYS.LAST_SYNC, Date.now().toString());
     return { ok: true, mode: 'cloud', count: products.length };
   } catch (e) {
-    return { ok: false, reason: 'Network error — ' + e.message };
+    return { ok: false, reason: e.message };
   }
 }
 
@@ -129,7 +102,7 @@ export async function syncToCloud() {
 // ============================================================
 export async function restoreFromCloud(targetDeviceId) {
   const myId = await getDeviceId();
-  const id = (targetDeviceId || myId).trim();
+  const id = (targetDeviceId || myId).trim().toUpperCase();
 
   if (!isCloudConfigured()) {
     // Fallback: restore from local snapshot
@@ -157,20 +130,10 @@ export async function restoreFromCloud(targetDeviceId) {
   }
 
   try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/${TABLE}?device_id=eq.${encodeURIComponent(
-        id,
-      )}&select=*`,
-      { headers: authHeaders() },
-    );
-    if (!res.ok) {
-      return { ok: false, reason: `Supabase ${res.status}` };
-    }
-    const rows = await res.json();
-    if (!rows.length) {
+    const row = await rpc('iq_pull', { p_device_id: id });
+    if (!row || !Array.isArray(row.data)) {
       return { ok: false, reason: `No data found for device ${id}` };
     }
-    const row = rows[0];
     const restored = (row.data || []).map((p) => ({
       ...p,
       status: computeStatus(p),
@@ -186,7 +149,7 @@ export async function restoreFromCloud(targetDeviceId) {
       timestamp: row.updated_at,
     };
   } catch (e) {
-    return { ok: false, reason: 'Network error — ' + e.message };
+    return { ok: false, reason: e.message };
   }
 }
 

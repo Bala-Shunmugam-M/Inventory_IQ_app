@@ -5,3 +5,12 @@ account_id = "3ff2aa59d592dda71799cca963c855a9"
 
 # Secret (do NOT put the key here — set it with:  wrangler secret put GROQ_API_KEY)
 # The key is then available as env.GROQ_API_KEY inside worker.js
+
+# Per-IP rate limit: 20 AI calls per minute. Read in worker.js as env.LIMITER.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 20
+  period = 60
