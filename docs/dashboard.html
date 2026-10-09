@@ -940,7 +940,7 @@ function renderOrders(){
         +'</tr>';
     }).join('')+'</tbody></table></div>';
 }
-function markOrdered(id){var p=PRODS.find(function(x){return x.id===id;});if(!p)return;var q=iqOrderQty(p);if(!q){toast('Enough is already on order — nothing to add');return;}p.incoming=(p.incoming||0)+q;saveProds();toast('✅ Marked '+q+' units as ordered','green');renderOrders();updateBadges();}
+function markOrdered(id){var p=PRODS.find(function(x){return x.id===id;});if(!p)return;var q=iqMarkOrdered(p);if(!q){toast('Enough is already on order — nothing to add');return;}saveProds();toast('✅ Marked '+q+' units as ordered','green');renderOrders();updateBadges();}
 function receiveStock(id){var p=PRODS.find(function(x){return x.id===id;});if(!p||!p.incoming)return;var n=p.incoming;iqReceive(p);recomputeAllStatus();saveProds();toast('📥 Received '+n+' units of '+p.name,'green');renderOrders();updateBadges();}
 
 function renderForecast(){
@@ -1179,7 +1179,9 @@ function syncToCloud(){
   iqPush(PRODS,loadSalesLog()).then(function(r){
     localStorage.setItem('iq_last_sync',Date.now().toString());
     if(r.merged){PRODS=r.merged.data;recomputeAllStatus();saveProds();try{localStorage.setItem(SALES_KEY,JSON.stringify(r.merged.sales));}catch(e){}refreshAll();}
-    toast(r.mode==='cloud'?(r.merged?'✅ Merged with changes from another device · ':'✅ Synced ')+PRODS.length+' products':'💾 Saved on this device only — cloud sync not configured','green');
+    var cf=(r.conflicts||[]).map(function(c){return 'Stock for '+c.name+' differed between devices — kept '+c.kept+', please recount';});
+    if(cf.length)toast(cf.join(' · '),'red');
+    else toast(r.mode==='cloud'?(r.merged?'✅ Merged with changes from another device · ':'✅ Synced ')+PRODS.length+' products':'💾 Saved on this device only — cloud sync not configured','green');
     if(curScreen==='settings')renderSettings();
   }).catch(function(e){toast('Sync failed: '+e.message,'red');});
 }
@@ -1187,9 +1189,9 @@ function restoreFromCloud(){
   var id=prompt('Store link code from another device (iq1:…), or blank for the latest of this store:');
   if(id===null)return;
   iqPull(id).then(function(d){
-    if(!d||!d.data.length){toast(iqCloudReady()?'Nothing saved to that store yet':'No snapshot saved on this device','red');return;}
+    if(!d){toast(iqCloudReady()?'Nothing saved to that store yet':'No snapshot saved on this device','red');return;}
     if(d.mode==='local'&&id.trim()){toast('Cloud sync not configured — can only restore this device\'s snapshot','red');return;}
-    if(!confirm('Found '+d.data.length+' products from '+new Date(d.ts).toLocaleString()+'. Restore? This replaces current data.'))return;
+    if(!confirm(d.data.length?'Found '+d.data.length+' products from '+new Date(d.ts).toLocaleString()+'. Restore? This replaces current data.':'The saved catalog from '+new Date(d.ts).toLocaleString()+' is empty. Restore it and remove all products from this device?'))return;
     d.commit();
     PRODS=d.data;recomputeAllStatus();saveProds();
     if(d.sales){try{localStorage.setItem(SALES_KEY,JSON.stringify(d.sales));}catch(e){}}

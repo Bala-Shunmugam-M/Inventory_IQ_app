@@ -14,6 +14,7 @@
  *   iq_device_id              — this device's stable ID
  *   iq_cloud_snapshot         — last cloud-sync snapshot
  *   iq_last_sync              — timestamp of last successful sync
+ *   iq_events                 — stock event log (sale/order/receive/adjust/close), replayed on sync merge
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -28,6 +29,7 @@ export const KEYS = {
   CLOUD: 'iq_cloud_snapshot',
   LAST_SYNC: 'iq_last_sync',
   ONBOARDED: 'iq_onboarded',
+  EVENTS: 'iq_events',
 };
 
 // ============================================================
@@ -99,25 +101,54 @@ export async function addProduct(input) {
   const products = await loadProducts();
   const newP = buildProduct(input);
   products.push(newP);
-  await saveProducts(products);
+  if (!(await saveProducts(products))) return null;
   return newP;
 }
 
+// Mutations return null when nothing was saved (e.g. a sync is in progress).
 export async function updateProduct(id, patch) {
   const products = await loadProducts();
   const idx = products.findIndex((p) => p.id === id);
   if (idx < 0) return null;
   const merged = { ...products[idx], ...patch };
   products[idx] = merged;
-  await saveProducts(products); // recomputes merged's ROP/EOQ/ABC/status in place
+  if (!(await saveProducts(products))) return null; // recomputes merged's ROP/EOQ/ABC/status in place
   return merged;
 }
 
 export async function deleteProduct(id) {
   const products = await loadProducts();
   const filtered = products.filter((p) => p.id !== id);
-  await saveProducts(filtered);
+  if (!(await saveProducts(filtered))) return null;
   return filtered;
+}
+
+// ============================================================
+// EVENT LOG — every stock-changing action is also an event with a unique id, so
+// sync can replay events instead of adding up differences (cloud.js). Same as docs/iq-core.js.
+// ============================================================
+const EV_MAX = 3000, EV_DAYS = 120;
+export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+export async function loadEvents() {
+  try {
+    const a = JSON.parse((await AsyncStorage.getItem(KEYS.EVENTS)) || '[]');
+    return Array.isArray(a) ? a : [];
+  } catch {
+    return [];
+  }
+}
+export function trimEvents(ev) {
+  const cut = Date.now() - EV_DAYS * 864e5;
+  return ev.filter((e) => e && e.t >= cut).sort((a, b) => a.t - b.t).slice(-EV_MAX);
+}
+export async function saveEvents(ev) {
+  ev = trimEvents(ev);
+  await AsyncStorage.setItem(KEYS.EVENTS, JSON.stringify(ev));
+  return ev;
+}
+export async function addEvents(list) {
+  const t = Date.now(), day = localDay();
+  return saveEvents([...(await loadEvents()), ...list.map((f) => ({ id: uid(), t, day, ...f }))]);
 }
 
 // ============================================================
@@ -140,29 +171,40 @@ export const IQ_PARAMS = {
 const mean = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
 export const leadOf = (p) => (p.lead > 0 ? p.lead : IQ_PARAMS.defaultLead);
 
-// Usable demand observations: recent days not censored by a stockout.
-export function usableDays(p) {
+// Recent window with sold-out days read as lower bounds: iterate
+// d = mean(x_i if uncensored else max(x_i, d)) from the plain mean to its fixed point.
+// Returns { d, n: uncensored days, x: imputed window }. Same as iqCensMean.
+export function censMean(p) {
   const h = Array.isArray(p.history) ? p.history : [];
   const c = Array.isArray(p.histCens) ? p.histCens : [];
-  const from = Math.max(0, h.length - IQ_PARAMS.window);
-  return h.slice(from).filter((_, i) => !c[from + i]);
+  const from = Math.max(0, h.length - IQ_PARAMS.window), x = h.slice(from);
+  const cs = x.map((_, i) => (c[from + i] ? 1 : 0));
+  const n = cs.filter((k) => !k).length;
+  const fill = (d) => x.map((v, i) => (cs[i] ? Math.max(v, d) : v));
+  let d = mean(x);
+  for (let it = 0; it < 200 && n > 0 && n < x.length; it++) { // all censored: plain mean
+    const nd = mean(fill(d));
+    if (Math.abs(nd - d) < 1e-9) { d = nd; break; }
+    d = nd;
+  }
+  return { d, n, x: fill(d) };
 }
-// Planning demand (units/day): average of usable recent days, blended with the typed
-// estimate in proportion to how many usable days there are (full weight at minHistory).
+// Planning demand (units/day): censor-aware average of recent days, blended with the typed
+// estimate in proportion to how many uncensored days there are (full weight at minHistory).
 export function planDemand(p) {
   const typed = num(p.demand);
-  const obs = usableDays(p);
-  if (!obs.length) return typed || mean((p.history || []).slice(-IQ_PARAMS.window)); // censored sales: lower bound
-  const w = typed ? Math.min(1, obs.length / IQ_PARAMS.minHistory) : 1;
-  return w * mean(obs) + (1 - w) * typed;
+  const e = censMean(p);
+  if (!e.n) return typed || e.d; // no uncensored day: keep the estimate; sold-out days are a lower bound
+  const w = typed ? Math.min(1, e.n / IQ_PARAMS.minHistory) : 1;
+  return w * e.d + (1 - w) * typed;
 }
 const dOf = (p) => (typeof p.planDemand === 'number' ? p.planDemand : planDemand(p));
 
-// σ of daily demand from usable days; cvFallback on short history; never below √mean.
+// σ of daily demand over the censor-imputed window; cvFallback under minHistory uncensored days; never below √mean.
 export function demandSigma(p, d) {
-  const h = usableDays(p);
+  const { x: h, n } = censMean(p);
   let sd = IQ_PARAMS.cvFallback * d;
-  if (h.length >= IQ_PARAMS.minHistory) {
+  if (n >= IQ_PARAMS.minHistory) {
     const m = mean(h);
     sd = Math.sqrt(h.reduce((s, x) => s + (x - m) ** 2, 0) / (h.length - 1));
   }
@@ -254,21 +296,24 @@ export async function loadSalesLog() {
   }
 }
 
-// One sales save. Products not entered get a confirmed zero-sale day (the owner logged
-// that day); selling out or an empty shelf marks the day censored. Same as iqRecordDay.
-// ponytail: assumes the owner enters every product sold that day.
+// One sales save. Only entered products are logged — a partial entry must not declare
+// zero sales for the rest (completeDay does that). Selling out or an empty shelf marks the
+// day censored. Same as iqRecordDay.
 export async function recordSales(qtyMap) {
   const products = await loadProducts();
-  const lines = [];
+  const lines = [], events = [];
   const today = localDay();
   const updated = products.map((p) => {
+    if (!(num(qtyMap[p.id]) > 0)) return p;
     const sold = Math.min(num(qtyMap[p.id]), p.stock || 0);
     const stock = (p.stock || 0) - sold;
     if (sold > 0) lines.push({ id: p.id, name: p.name, qty: sold, revenue: sold * p.sell, profit: sold * (p.sell - p.cost) });
+    events.push({ type: 'sale', day: today, pid: p.id, q: sold, cens: stock <= 0 ? 1 : 0 });
     return { ...p, stock, ...logDailySale(p, sold, today, stock <= 0) };
   });
   if (!lines.length) return null;
   if (!(await saveProducts(updated))) return null; // logged sales feed planning demand → ROP/EOQ/ABC
+  await addEvents(events);
   const sum = (k) => lines.reduce((s, l) => s + l[k], 0);
   const entry = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), // unique sale event id for sync
@@ -286,8 +331,24 @@ export async function recordSales(qtyMap) {
   return entry;
 }
 
+// "Finished entering today's sales": every product with no sale logged today gets a
+// confirmed zero day (censored when it had no stock). Works on a day with no sales at all.
+// Returns how many products got a zero day, or null if nothing could be saved. Same as iqCompleteDay.
+export async function completeDay(today = localDay()) {
+  const products = await loadProducts();
+  let n = 0;
+  const updated = products.map((p) => {
+    if (p.histDay === today) return p;
+    n++;
+    return { ...p, ...logDailySale(p, 0, today, !(p.stock > 0)) };
+  });
+  if (!(await saveProducts(updated))) return null;
+  await addEvents([{ type: 'close', day: today }]);
+  return n;
+}
+
 // history[] = units per DAY (second save the same day adds to today's bucket);
-// histCens[i] = 1 marks a sold-out / empty-shelf day, which demand math skips.
+// histCens[i] = 1 marks a sold-out / empty-shelf day, a lower bound on that day's demand.
 // ponytail: days with no save at all are skipped, not zero-filled.
 export function localDay(d = new Date()) {
   const pad = (n) => String(n).padStart(2, '0');
@@ -319,15 +380,20 @@ export const orderQty = (p) =>
 
 export async function markOrdered(id) {
   const p = (await loadProducts()).find((x) => x.id === id);
-  if (!p || !orderQty(p)) return null; // enough already on order
-  return updateProduct(id, { incoming: (p.incoming || 0) + orderQty(p) });
+  const q = p && orderQty(p);
+  if (!q) return null; // enough already on order
+  const r = await updateProduct(id, { incoming: (p.incoming || 0) + q });
+  if (r) await addEvents([{ type: 'order', pid: id, q }]);
+  return r;
 }
 
 export async function receiveStock(id) {
   const p = (await loadProducts()).find((x) => x.id === id);
   if (!p || !p.incoming) return null;
   const stock = p.stock + p.incoming;
-  return updateProduct(id, { stock, incoming: 0 });
+  const r = await updateProduct(id, { stock, incoming: 0 });
+  if (r) await addEvents([{ type: 'receive', pid: id, q: p.incoming }]);
+  return r;
 }
 
 // ============================================================
@@ -370,28 +436,33 @@ function fcNext(h) {
   return 0.6 * lin + 0.4 * ma;
 }
 
+// Runs on the censor-imputed history (a sold-out day counts as at least the planning demand).
 // accuracy = 1 − WAPE when the last (up to) 7 logged days are forecast from the days
-// before them; null until 7 days. r2 (0–100) is trend fit, not accuracy.
+// before them, scoring only uncensored days; null under 3 scored. r2 (0–100) is trend fit, not accuracy.
 export function forecastProduct(p) {
-  const h = Array.isArray(p.history) ? p.history : [];
-  const n = h.length, d = dOf(p);
+  const raw = Array.isArray(p.history) ? p.history : [];
+  const c = Array.isArray(p.histCens) ? p.histCens : [];
+  const n = raw.length, d = dOf(p);
   if (n < 2) return { forecast: Math.round(d), ci: Math.round(1.645 * demandSigma(p, d)), trend: 'flat', trendPct: 0, accuracy: null, r2: 0, ma7: Math.round(d), n };
+  const h = raw.map((x, i) => (c[i] ? Math.max(x, d) : x));
   const k = Math.min(7, n - 4);
-  let err = 0, sq = 0, act = 0;
+  let err = 0, sq = 0, act = 0, m = 0;
   for (let t = n - k; t < n; t++) {
+    if (c[t]) continue;
     const e = h[t] - fcNext(h.slice(0, t));
     err += Math.abs(e);
     sq += e * e;
     act += h[t];
+    m++;
   }
   const reg = linReg(h), ma7 = mean(h.slice(-7));
   const pct = ma7 > 0 ? Math.round((reg.slope * 7 / ma7) * 100) : 0;
   return {
     forecast: Math.max(0, Math.round(fcNext(h))),
-    ci: Math.round(1.645 * (k >= 3 ? Math.sqrt(sq / k) : demandSigma(p, d))),
+    ci: Math.round(1.645 * (m >= 3 ? Math.sqrt(sq / m) : demandSigma(p, d))),
     trend: pct >= 5 ? 'up' : pct <= -5 ? 'down' : 'flat',
     trendPct: Math.abs(pct),
-    accuracy: k >= 3 && act > 0 ? Math.max(0, Math.round((1 - err / act) * 100)) : null,
+    accuracy: m >= 3 && act > 0 ? Math.max(0, Math.round((1 - err / act) * 100)) : null,
     r2: Math.round(reg.r2 * 100),
     ma7: Math.round(ma7),
     n,
@@ -476,6 +547,7 @@ export async function clearAllData() {
     KEYS.SYNC_HIST,
     KEYS.CLOUD,
     KEYS.LAST_SYNC,
+    KEYS.EVENTS,
   ];
   await AsyncStorage.multiRemove(keysToClear);
   if (preserveDeviceId) {

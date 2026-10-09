@@ -104,11 +104,31 @@ const dead = core.iqRecompute([{ id: 1, stock: 0, demand: 0, sell: 5, cost: 4, l
 assert.deepEqual([dead.rop, dead.eoq, dead.status, core.iqOrderQty(dead)], [0, 0, 'good', 0]);
 assert.equal(core.iqRecompute([{ id: 1, stock: 5, demand: 0.04, sell: 5, cost: 4 }])[0].planDemand, 0.04, 'slow movers keep precision');
 
-// Demand uses confirmed zero-sale days and skips stockout-censored days
+// Demand uses confirmed zero-sale days ("Finished entering today's sales") and reads
+// stockout-censored days as lower bounds
 const days = (n) => Array.from({ length: n }, (_, i) => '2026-10-' + String(i + 1).padStart(2, '0'));
 const alt = [{ id: 1, stock: 1000, demand: 0, sell: 1, cost: 1 }];
-days(14).forEach((d, i) => core.iqRecordDay(alt, i % 2 ? {} : { 1: 10 }, d));
+days(14).forEach((d, i) => { core.iqRecordDay(alt, i % 2 ? {} : { 1: 10 }, d); core.iqCompleteDay(alt, d); });
 assert.equal(core.iqDemand(alt[0]), 5, 'review case: 10 on alternate days = 5/day, not 10');
+
+// Review #2, task 5: a partial entry logs only the products entered
+const part = [{ id: 1, stock: 500, demand: 10, sell: 1, cost: 1 }, { id: 2, stock: 500, demand: 6, sell: 1, cost: 1 }];
+days(7).forEach((d) => core.iqRecordDay(part, { 1: 10 }, d));
+assert.deepEqual([part[1].history, core.iqDemand(part[1])], [undefined, 6], 'unentered product: untouched, keeps its typed demand');
+assert.equal(core.iqDemand(part[0]), 10);
+const quiet = [{ id: 1, stock: 5, demand: 4, sell: 1, cost: 1 }, { id: 2, stock: 0, demand: 4, sell: 1, cost: 1 }];
+assert.equal(core.iqCompleteDay(quiet, '2026-10-01'), 2, 'works on a day with no sales at all');
+assert.deepEqual([quiet[0].history, quiet[0].histCens, quiet[1].history, quiet[1].histCens], [[0], [0], [0], [1]], 'zeros; empty shelf = censored');
+assert.equal(core.iqCompleteDay(quiet, '2026-10-01'), 0, 'idempotent');
+core.iqRecordDay(quiet, { 1: 2 }, '2026-10-02'); core.iqCompleteDay(quiet, '2026-10-02');
+assert.deepEqual([quiet[0].history, quiet[1].history], [[0, 2], [0, 0]], 'a sold product keeps its sale');
+
+// Review #2, task 3: sold-out days are lower bounds, not discarded
+const sw = { demand: 0, history: [], histCens: [] };
+for (let i = 0; i < 14; i++) { sw.history.push(i % 2 ? 20 : 2); sw.histCens.push(i % 2); }
+near(core.iqDemand(sw), 11, 1e-6, 'alternating 2 / sold-out 20 → ~11, not 2');
+near(core.iqDemand({ demand: 0, history: [4, 2, 2], histCens: [0, 1, 1] }), 4, 1e-6, 'sold-out days below the mean count as the mean');
+assert.equal(core.iqDemand({ demand: 0, history: [2, 4], histCens: [1, 1] }), 3, 'all sold out, nothing typed: plain mean as the lower bound');
 const cens = [{ id: 1, stock: 0, demand: 10, sell: 1, cost: 1 }];
 days(7).forEach((d) => { cens[0].stock = 2; core.iqRecordDay(cens, { 1: 2 }, d); });
 assert.equal(core.iqDemand(cens[0]), 10, 'review case: sold-out days keep the estimate, not 2/day');
@@ -130,9 +150,19 @@ assert.equal(core.iqAttr(`');x=1;//"`), '&#39;);x=1;//&quot;');
 
 // Three-way sync merge (review cases)
 const b0 = [{ id: 1, name: 'Atta', stock: 20, price: 10 }, { id: 2, name: 'Salt', stock: 5 }];
-let m = core.iqMerge3(b0, [{ id: 1, name: 'Atta', stock: 17, price: 10 }, b0[1]], [{ id: 1, name: 'Atta', stock: 16, price: 10 }, b0[1]]);
-assert.equal(m.find((x) => x.id === 1).stock, 13, 'both devices sold: 20 − 3 − 4 = 13');
-m = core.iqMerge3(b0, [b0[0]], [b0[0], b0[1]]);
+const T0 = Date.now(), ev = (id, t, type, f) => ({ id, t: T0 + t, day: '2026-10-02', type, ...f });
+const sold = (id, t, q) => ev(id, t, 'sale', { pid: 1, q, cens: 0 });
+let mm = core.iqMergeSnap({ products: b0, events: [] }, { products: [{ ...b0[0], stock: 17 }, b0[1]], events: [sold('a', 1, 3)] },
+  { products: [{ ...b0[0], stock: 16 }, b0[1]], events: [sold('b', 2, 4)] }, T0 + 3);
+assert.equal(mm.products.find((x) => x.id === 1).stock, 13, 'both devices sold: 20 − 3 − 4 = 13');
+mm = core.iqMergeSnap({ products: b0, events: [] }, { products: [{ ...b0[0], stock: 17 }, b0[1]], events: [sold('a', 1, 3)] },
+  { products: [{ ...b0[0], stock: 17 }, b0[1]], events: [sold('a', 1, 3)] }, T0 + 3);
+assert.equal(mm.products[0].stock, 17, 'own sale already on the server (lost response) applies once');
+mm = core.iqMergeSnap({ products: b0, events: [] }, { products: [{ ...b0[0], stock: 20 }, b0[1]], events: [] },
+  { products: [{ ...b0[0], stock: 25 }, b0[1]], events: [] }, T0 + 3);
+assert.equal(mm.products[0].stock, 25, 'remote stock change without events (older client) is kept as an adjust');
+assert.equal(mm.events.filter((e) => e.type === 'adjust').length, 1);
+let m = core.iqMerge3(b0, [b0[0]], [b0[0], b0[1]]);
 assert.deepEqual(m.map((x) => x.id), [1], 'local delete is not resurrected');
 m = core.iqMerge3(b0, [b0[0]], [b0[0], { id: 2, name: 'Salt', stock: 9 }]);
 assert.equal(m.find((x) => x.id === 2).stock, 9, 'delete vs remote edit keeps the edit');
@@ -147,6 +177,12 @@ assert.equal(core.iqForecast({ demand: 9, history: [9, 9, 9, 9, 9, 9, 9] }).acc,
 const noisy = core.iqForecast({ demand: 10, history: [10, 2, 18, 3, 17, 2, 18, 3, 17, 2] });
 assert.ok(noisy.acc < 70, `noisy series can't look accurate: ${noisy.acc}`);
 assert.ok(noisy.r2 < 10);
+// Review #2, task 4: sold-out days don't drag the forecast down or count as perfect accuracy
+const so = core.iqForecast({ demand: 10, history: [2, 2, 2, 2, 2, 2, 2], histCens: [1, 1, 1, 1, 1, 1, 1] });
+assert.deepEqual([so.forecast, so.acc], [10, null], 'seven sold-out 2s with typed 10 → forecast 10, no accuracy claim');
+assert.ok(so.ci > 0, 'band is not 0');
+const mix = core.iqForecast({ demand: 0, history: [5, 5, 5, 5, 5, 5, 5, 5, 5, 1], histCens: [0, 0, 0, 0, 0, 0, 0, 0, 0, 1] });
+assert.equal(mix.acc, 100, 'the sold-out last day is not scored');
 // …and the trend can't extrapolate to silly values
 const crash = core.iqForecast({ demand: 50, history: [100, 80, 60, 40, 20, 0] });
 assert.ok(crash.forecast >= 0);
@@ -165,5 +201,9 @@ assert.equal(core.iqHealth([]), null);
 const base = core.iqSimulate(cat, 0, 0), worse = core.iqSimulate(cat, 20, 2);
 assert.equal(base.ssPct, 0);
 assert.ok(worse.ssPct > 0 && worse.service <= base.service && worse.stockouts >= base.stockouts);
+
+// Review #2, task 7: names typed into add/edit forms lose < > at the next recompute
+const typedName = core.iqRecompute([{ id: 1, name: '<img src=x onerror=alert(1)>Atta', supplier: '<b>S</b>', stock: 1, demand: 1 }])[0];
+assert.deepEqual([typedName.name, typedName.supplier], ['img src=x onerror=alert(1)Atta', 'bS/b']);
 
 console.log('all checks passed');

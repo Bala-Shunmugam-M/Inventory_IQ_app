@@ -2201,7 +2201,9 @@ function doSyncCloud(){
   iqPush(PRODS,loadSalesLog()).then(function(r){
     localStorage.setItem('iq_last_sync',Date.now().toString());
     if(r.merged){PRODS=r.merged.data;recomputeAllStatus();saveProds();try{localStorage.setItem(SALES_KEY,JSON.stringify(r.merged.sales));}catch(e){}if(curScreen==='home')initHome();}
-    toast(r.mode==='cloud'?(r.merged?'✅ Merged with changes from another device · ':'✅ Synced ')+PRODS.length+' products':'💾 Saved on this device only — cloud sync not configured','green');
+    var cf=(r.conflicts||[]).map(function(c){return 'Stock for '+c.name+' differed between devices — kept '+c.kept+', please recount';});
+    if(cf.length)toast(cf.join(' · '),'red');
+    else toast(r.mode==='cloud'?(r.merged?'✅ Merged with changes from another device · ':'✅ Synced ')+PRODS.length+' products':'💾 Saved on this device only — cloud sync not configured','green');
     initMore();
   }).catch(function(e){if(ss)ss.textContent='Sync failed — tap to retry';toast('Sync failed: '+e.message,'red');});
 }
@@ -2210,9 +2212,9 @@ function doRestoreCloud(){
   var id=prompt('Paste a store link code from another device (iq1:…), or leave blank to pull the latest for this store:');
   if(id===null)return;
   iqPull(id).then(function(snap){
-    if(!snap||!snap.data.length){toast(iqCloudReady()?'Nothing saved to that store yet':'No snapshot saved on this device');return;}
+    if(!snap){toast(iqCloudReady()?'Nothing saved to that store yet':'No snapshot saved on this device');return;}
     if(snap.mode==='local'&&id.trim()){toast('Cloud sync not configured — can only restore this device\'s snapshot','red');return;}
-    if(!confirm('Found '+snap.data.length+' products from '+new Date(snap.ts).toLocaleString()+'. Restore? This replaces current data.'))return;
+    if(!confirm(snap.data.length?'Found '+snap.data.length+' products from '+new Date(snap.ts).toLocaleString()+'. Restore? This replaces current data.':'The saved catalog from '+new Date(snap.ts).toLocaleString()+' is empty. Restore it and remove all products from this device?'))return;
     snap.commit();
     PRODS=snap.data;
     recomputeAllStatus();
@@ -2509,9 +2511,8 @@ function quickDelete(id){
 function markOrdered(id){
   var p=PRODS.find(function(x){return x.id===id;});
   if(!p)return;
-  var q=iqOrderQty(p);
+  var q=iqMarkOrdered(p);
   if(!q){toast('Enough is already on order — nothing to add');return;}
-  p.incoming=(p.incoming||0)+q;
   saveProds();
   toast('✅ Marked '+q+' units as ordered','green');
   renderProdList();

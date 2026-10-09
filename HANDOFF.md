@@ -1,5 +1,34 @@
 # Handoff — sync & demand fixes from external review #2
 
+> **Status: tasks 1–8 implemented** (see the commit after `e49adbe`). All four suites
+> pass; both pages were smoke-tested in a browser with no new console errors.
+>
+> **For the UI branch:**
+> - Wire "Finished entering today's sales" to `iqCompleteDay(PRODS)` then
+>   `recomputeAllStatus(); saveProds();` on the web, and to `completeDay()` on mobile
+>   (returns the number of products zeroed, or `null` if the save was refused).
+>   Until then, unentered products simply get no day logged (no false zeros).
+> - The comment above `iqRecordDay` in `doSave` (index.html) still says every product
+>   gets a zero day. That's no longer true, so fix it while you're in that function.
+> - Mobile `addProduct` / `updateProduct` / `deleteProduct` now return `null` when the save
+>   was refused (sync in progress); screens can show that. `syncToCloud()` also returns
+>   `conflicts: [{ name, kept }]`, so show "Stock for X differed between devices —
+>   kept N, please recount" like the web handlers do.
+>
+> **Deploying the backend:** an existing D1 database needs the new column once:
+> `wrangler d1 execute inventoryiq --remote --command "ALTER TABLE stores ADD COLUMN events TEXT NOT NULL DEFAULT '[]'"`.
+>
+> **Where the implementation differs from the text below, and why:**
+> - Replay order is calendar **day, then time** (then id), not time then day, so history
+>   buckets stay chronological even when timestamps and sale days disagree.
+> - Each web tab keeps the set of event ids its in-memory products reflect. All tabs share
+>   `iq_events`, and without this a stale tab would read another tab's sale as its own
+>   untracked edit and "correct" it away.
+> - Remote stock changes that no event explains (older clients) also become `adjust` events
+>   during the merge, so they aren't reset to the base value.
+> - Forecasts impute a sold-out day as `max(sold, planning demand)`. Imputing with the
+>   censored fixed point alone would still forecast 2 in the seven-sold-out-2s case.
+
 Branch: `audit-upgrade` (PR #1). Base commit for this work: `efd5dc3`.
 All findings below were checked against the code and are real. Each has an
 acceptance test that must be added and pass.

@@ -3,7 +3,7 @@
  *
  *   GET  /api/health                  -> { ok: true }
  *   POST /api/stores                  -> { storeId, token }
- *   GET  /api/stores/:id/snapshot     -> { version, updatedAt, products, sales }   (Bearer token)
+ *   GET  /api/stores/:id/snapshot     -> { version, updatedAt, products, sales, events }   (Bearer token)
  *   PUT  /api/stores/:id/snapshot     -> { version, updatedAt } | 409               (Bearer token)
  *   POST /api/ai   (and legacy POST /) -> Groq chat completion, model pinned
  *
@@ -194,7 +194,7 @@ async function authStore(request, env, storeId) {
 
 async function getSnapshot(row) {
   return json(
-    { version: row.version, updatedAt: row.updated_at, products: JSON.parse(row.products), sales: JSON.parse(row.sales) },
+    { version: row.version, updatedAt: row.updated_at, products: JSON.parse(row.products), sales: JSON.parse(row.sales), events: JSON.parse(row.events || '[]') },
     200,
     OPEN_CORS
   );
@@ -241,13 +241,17 @@ async function putSnapshot(request, env, row) {
   if (!Array.isArray(sales) || sales.length > 5000) return bad('sales must be an array (max 5000) or null');
   if (!sales.every((e) => e && typeof e === 'object' && !Array.isArray(e) && (e.date == null || typeof e.date === 'string')))
     return bad('Every sale must be an object with a string date');
+  const events = body.events ?? [];
+  if (!Array.isArray(events) || events.length > 5000) return bad('events must be an array (max 5000) or null');
+  if (!events.every((e) => e && typeof e === 'object' && !Array.isArray(e) && typeof e.id === 'string' && e.id.length <= 64))
+    return bad('Every event must be an object with a string id');
 
   const now = new Date().toISOString();
   // The version check lives in the WHERE clause, so two concurrent PUTs can't both win.
   const res = await env.DB.prepare(
-    'UPDATE stores SET products = ?, sales = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?'
+    'UPDATE stores SET products = ?, sales = ?, events = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?'
   )
-    .bind(JSON.stringify(products), JSON.stringify(sales), now, row.id, body.baseVersion)
+    .bind(JSON.stringify(products), JSON.stringify(sales), JSON.stringify(events), now, row.id, body.baseVersion)
     .run();
   if (!res.meta.changes) {
     const cur = await env.DB.prepare('SELECT version, updated_at FROM stores WHERE id = ?').bind(row.id).first();

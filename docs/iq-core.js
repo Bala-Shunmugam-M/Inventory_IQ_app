@@ -96,34 +96,42 @@ var IQ_HEALTH_W = [30, 25, 20, 15, 10]; // health weights: stockout, excess, for
 function iqMean(a) { return a.length ? a.reduce(function (s, x) { return s + x; }, 0) / a.length : 0; }
 function iqLead(p) { return p.lead > 0 ? p.lead : IQ_PARAMS.defaultLead; }
 
-// Usable demand observations: recent logged days that were NOT censored by a stockout
-// (a day the product sold out or had no stock only shows how much stock there was).
-function iqObs(p) {
+// Recent window of logged days with sold-out days read as lower bounds: a censored day
+// (sold out / empty shelf) shows demand was at least what sold. Dropping those days would
+// keep only the quiet ones and bias demand down, so iterate
+//   d = mean(x_i if uncensored else max(x_i, d))
+// from the plain mean up to its fixed point. Returns { d, n: uncensored days, x: imputed window }.
+// ponytail: fixed-point loop capped at 200 rounds — plenty at window = 14 days.
+function iqCensMean(p) {
   var h = Array.isArray(p.history) ? p.history : [], c = Array.isArray(p.histCens) ? p.histCens : [];
-  var n = h.length, from = Math.max(0, n - IQ_PARAMS.window), out = [];
-  for (var i = from; i < n; i++) if (!c[i]) out.push(h[i]);
-  return out;
-}
-// Planning demand (units/day): average of usable recent days, blended with the typed
-// estimate in proportion to how many usable days there are (full weight at minHistory).
-function iqDemand(p) {
-  var typed = iqNum(p.demand), obs = iqObs(p);
-  if (!obs.length) { // nothing usable: keep the estimate; if there is none, censored sales are a lower bound
-    var h = Array.isArray(p.history) ? p.history.slice(-IQ_PARAMS.window) : [];
-    return typed || iqMean(h);
+  var from = Math.max(0, h.length - IQ_PARAMS.window), x = h.slice(from), n = 0;
+  var cs = x.map(function (_, i) { var k = c[from + i] ? 1 : 0; if (!k) n++; return k; });
+  var fill = function (d) { return x.map(function (v, i) { return cs[i] ? Math.max(v, d) : v; }); };
+  var d = iqMean(x);
+  for (var it = 0; it < 200 && n > 0 && n < x.length; it++) { // all censored: plain mean (the iteration would run up to max)
+    var nd = iqMean(fill(d));
+    if (Math.abs(nd - d) < 1e-9) { d = nd; break; }
+    d = nd;
   }
-  var w = typed ? Math.min(1, obs.length / IQ_PARAMS.minHistory) : 1;
-  return w * iqMean(obs) + (1 - w) * typed;
+  return { d: d, n: n, x: fill(d) };
+}
+// Planning demand (units/day): censor-aware average of recent days, blended with the typed
+// estimate in proportion to how many uncensored days there are (full weight at minHistory).
+function iqDemand(p) {
+  var typed = iqNum(p.demand), e = iqCensMean(p);
+  if (!e.n) return typed || e.d; // no uncensored day: keep the estimate; without one, sold-out days are a lower bound
+  var w = typed ? Math.min(1, e.n / IQ_PARAMS.minHistory) : 1;
+  return w * e.d + (1 - w) * typed;
 }
 // Planning demand of a product already run through iqRecompute (falls back to computing it).
 function iqD(p) { return typeof p.planDemand === 'number' ? p.planDemand : iqDemand(p); }
 
-// σ of daily demand from usable days; with fewer than minHistory assume cvFallback.
-// Either way never below √mean (Poisson-like randomness of individual customers — an
-// assumption), so a few identical days can't zero the safety stock.
+// σ of daily demand over the censor-imputed window; with fewer than minHistory uncensored
+// days assume cvFallback. Either way never below √mean (Poisson-like randomness of
+// individual customers — an assumption), so a few identical days can't zero the safety stock.
 function iqSigma(p, d) {
-  var h = iqObs(p), sd;
-  if (h.length < IQ_PARAMS.minHistory) sd = IQ_PARAMS.cvFallback * d;
+  var e = iqCensMean(p), h = e.x, sd;
+  if (e.n < IQ_PARAMS.minHistory) sd = IQ_PARAMS.cvFallback * d;
   else {
     var m = iqMean(h);
     sd = Math.sqrt(h.reduce(function (s, x) { return s + (x - m) * (x - m); }, 0) / (h.length - 1));
@@ -148,8 +156,13 @@ function iqEOQ(d, cost) {
 // Recompute every derived field for the whole catalog: planning demand, ABC
 // class (Pareto needs all products), safety stock, ROP, EOQ, max and status.
 // Run after load, sales, receiving and any add/edit/delete. Mutates and returns ps.
+// Also strips < > from every top-level string field: add/edit forms store raw input, and
+// every add/edit/delete path runs through here before the next render.
 function iqRecompute(ps) {
-  ps.forEach(function (p) { p.planDemand = Math.round(iqDemand(p) * 100) / 100; }); // 2 dp keeps slow movers (0.04/day) non-zero
+  ps.forEach(function (p) {
+    for (var k in p) if (typeof p[k] === 'string') p[k] = p[k].replace(/[<>]/g, '');
+    p.planDemand = Math.round(iqDemand(p) * 100) / 100; // 2 dp keeps slow movers (0.04/day) non-zero
+  });
   var val = function (p) { return p.planDemand * 365 * (p.sell || 0); };
   var total = ps.reduce(function (s, p) { return s + val(p); }, 0), cum = 0;
   ps.slice().sort(function (a, b) { return val(b) - val(a); }).forEach(function (p) {
@@ -194,11 +207,59 @@ function iqOrderQty(p) {
   var ip = (p.stock || 0) + (p.incoming || 0);
   return iqShouldOrder(p) && p.eoq > 0 ? Math.ceil((p.rop || 0) + p.eoq - ip) : 0;
 }
+// "I placed this order": adds q (default: the suggested quantity) to incoming. Returns q.
+function iqMarkOrdered(p, q) {
+  q = q == null ? iqOrderQty(p) : iqNum(q);
+  if (!q) return 0;
+  p.incoming = (p.incoming || 0) + q;
+  iqLogEvents([{ type: 'order', pid: p.id, q: q }]);
+  return q;
+}
 function iqReceive(p) {
-  p.stock += p.incoming || 0;
+  var q = p.incoming || 0;
+  p.stock += q;
   p.incoming = 0;
   if (p.stock > p.max) p.max = p.stock;
+  if (q) iqLogEvents([{ type: 'receive', pid: p.id, q: q }]);
 }
+
+/* ── Event log ──
+   Every stock-changing action is also an event with a unique id, so sync can rebuild
+   stock and history by replaying events instead of adding up differences (retries and
+   duplicate actions then can't double-count). Kept in localStorage 'iq_events', which all
+   tabs share; IQ_EV_SEEN holds the ids this tab's in-memory products already reflect, so a
+   stale tab never claims (or overrides) another tab's sales. */
+var IQ_EV_KEY = 'iq_events', IQ_EV_MAX = 3000, IQ_EV_DAYS = 120, IQ_EV_MEM = [], IQ_EV_SEEN = {};
+function iqEvents() {
+  if (typeof localStorage === 'undefined') return IQ_EV_MEM.slice();
+  try { var a = JSON.parse(localStorage.getItem(IQ_EV_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+}
+function iqSeen(ev) { ev.forEach(function (e) { IQ_EV_SEEN[e.id] = 1; }); return ev; }
+// Union by id (first copy wins), dropping anything without a string id.
+function iqUnion(lists) {
+  var all = {}, out = [];
+  lists.forEach(function (l) { l.forEach(function (e) { if (e && typeof e.id === 'string' && !all[e.id]) { all[e.id] = 1; out.push(e); } }); });
+  return out;
+}
+function iqTrimEvents(ev) {
+  var cut = Date.now() - IQ_EV_DAYS * 864e5;
+  return ev.filter(function (e) { return e && e.t >= cut; }).sort(function (a, b) { return a.t - b.t; }).slice(-IQ_EV_MAX);
+}
+function iqSaveEvents(ev) {
+  ev = iqTrimEvents(ev);
+  if (typeof localStorage === 'undefined') IQ_EV_MEM = ev;
+  else try { localStorage.setItem(IQ_EV_KEY, JSON.stringify(ev)); } catch (e) {}
+  return ev;
+}
+function iqLogEvents(list) {
+  var t = Date.now(), day = iqToday();
+  iqSaveEvents(iqEvents().concat(iqSeen(list.map(function (f) {
+    var e = { id: iqUid(), t: t, day: day };
+    for (var k in f) e[k] = f[k];
+    return e;
+  }))));
+}
+if (typeof localStorage !== 'undefined') iqSeen(iqEvents()); // the page loads its products from the same moment's storage
 
 /* ── Sales history: one bucket per calendar day ──
    history[] feeds demand as "units per day", so a second save on the same day adds
@@ -223,19 +284,33 @@ function iqLogSale(p, q, today, censored) {
   p.histDay = today;
   if (p.history.length > 60) { p.history = p.history.slice(-60); p.histCens = p.histCens.slice(-60); }
 }
-// One sales save. qty = { id: units }. Products not entered get a confirmed zero-sale
-// day (the owner logged that day); selling out or an empty shelf marks the day censored.
-// ponytail: assumes the owner enters every product sold that day.
+// One sales save. qty = { id: units }. Only entered products are logged — a partial
+// entry must not declare zero sales for the rest; iqCompleteDay does that on request.
+// Selling out or an empty shelf marks the day censored.
 // Mutates stock/history and returns the sale lines.
 function iqRecordDay(ps, qty, today) {
-  var lines = [];
+  today = today || iqToday();
+  var lines = [], ev = [];
   ps.forEach(function (p) {
-    var start = p.stock || 0, q = Math.min(iqNum(qty[p.id]), start);
+    if (!(iqNum(qty[p.id]) > 0)) return;
+    var start = p.stock || 0, q = Math.min(iqNum(qty[p.id]), start), cens = start - q <= 0;
     p.stock = start - q;
-    iqLogSale(p, q, today, p.stock <= 0);
+    iqLogSale(p, q, today, cens);
+    ev.push({ type: 'sale', day: today, pid: p.id, q: q, cens: cens ? 1 : 0 });
     if (q > 0) lines.push({ id: p.id, name: p.name, qty: q, revenue: q * (p.sell || 0), profit: q * ((p.sell || 0) - (p.cost || 0)) });
   });
+  if (ev.length) iqLogEvents(ev);
   return lines;
+}
+// "Finished entering today's sales": every product with no sale logged that day gets a
+// confirmed zero day (censored when it had no stock). Works on a day with no sales at all.
+// Returns how many products got a zero day. UI: wire a button to iqCompleteDay(PRODS).
+function iqCompleteDay(ps, today) {
+  today = today || iqToday();
+  var n = 0;
+  ps.forEach(function (p) { if (p.histDay !== today) { iqLogSale(p, 0, today, !(p.stock > 0)); n++; } });
+  iqLogEvents([{ type: 'close', day: today }]);
+  return n;
 }
 
 /* ── Forecast: linear trend blended with 7-day moving average ── */
@@ -261,25 +336,30 @@ function iqFcNext(h) {
   var lin = Math.min(Math.max(reg.intercept + reg.slope * n, ma * 0.5), ma * 1.5);
   return 0.6 * lin + 0.4 * ma;
 }
+// Forecasts run on the censor-imputed history: a sold-out day counts as at least the
+// planning demand (max(sold, d)), so stockouts can't drag the forecast down.
 // acc = forecast accuracy measured by backtest: forecast each of the last (up to) 7
-// logged days from the days before it; acc = 1 − WAPE (Σ|error| ÷ Σ actual), null until 7 days.
+// logged days from the days before it, scoring only uncensored days (a sold-out day's
+// real demand is unknown); acc = 1 − WAPE (Σ|error| ÷ Σ actual), null under 3 scored days.
 // r2 is how straight the history is (trend fit), not accuracy. trendPct = trend change per week.
 function iqForecast(p) {
-  var h = Array.isArray(p.history) ? p.history : [], n = h.length, d = iqD(p);
+  var raw = Array.isArray(p.history) ? p.history : [], c = Array.isArray(p.histCens) ? p.histCens : [], n = raw.length, d = iqD(p);
   if (n < 2) return { forecast: Math.round(d), ci: Math.round(1.645 * iqSigma(p, d)), trend: 'flat', trendPct: 0, acc: null, r2: 0, ma7: Math.round(d), n: n };
-  var k = Math.min(7, n - 4), err = 0, sq = 0, act = 0;
+  var h = raw.map(function (x, i) { return c[i] ? Math.max(x, d) : x; });
+  var k = Math.min(7, n - 4), err = 0, sq = 0, act = 0, m = 0;
   for (var t = n - k; t < n; t++) {
+    if (c[t]) continue;
     var e = h[t] - iqFcNext(h.slice(0, t));
-    err += Math.abs(e); sq += e * e; act += h[t];
+    err += Math.abs(e); sq += e * e; act += h[t]; m++;
   }
   var reg = linReg(h), ma7 = iqMean(h.slice(-7));
   var pct = ma7 > 0 ? Math.round(reg.slope * 7 / ma7 * 100) : 0;
   return {
     forecast: Math.max(0, Math.round(iqFcNext(h))),
-    ci: Math.round(1.645 * (k >= 3 ? Math.sqrt(sq / k) : iqSigma(p, d))), // typical error band (heuristic, not a calibrated 90% interval)
+    ci: Math.round(1.645 * (m >= 3 ? Math.sqrt(sq / m) : iqSigma(p, d))), // typical error band (heuristic, not a calibrated 90% interval)
     trend: pct >= 5 ? 'up' : pct <= -5 ? 'down' : 'flat',
     trendPct: Math.abs(pct),
-    acc: k >= 3 && act > 0 ? Math.max(0, Math.round((1 - err / act) * 100)) : null,
+    acc: m >= 3 && act > 0 ? Math.max(0, Math.round((1 - err / act) * 100)) : null,
     r2: Math.round(reg.r2 * 100),
     ma7: Math.round(ma7),
     n: n
@@ -395,8 +475,9 @@ function iqStore(s) {
 function iqLinkCode() { var s = iqStore(); return s ? 'iq1:' + s.storeId + ':' + s.token : null; }
 function iqLoadBase() { try { return JSON.parse(localStorage.getItem('iq_sync_base') || 'null'); } catch (e) { return null; } }
 var IQ_BASE = typeof localStorage !== 'undefined' ? iqLoadBase() : null;
-function iqSetBase(version, products, sales) {
-  IQ_BASE = { version: version, products: products, sales: sales };
+// A deep copy: pages keep editing the very objects they synced, and the base must not move with them.
+function iqSetBase(version, products, sales, events) {
+  IQ_BASE = JSON.parse(JSON.stringify({ version: version, products: products, sales: sales, events: events || [] }));
   localStorage.setItem('iq_sync_base', JSON.stringify(IQ_BASE));
 }
 function iqApi(method, path, token, body) {
@@ -407,8 +488,6 @@ function iqApi(method, path, token, body) {
 }
 function iqFail(r) { throw new Error(r.status === 401 ? 'Link code not recognised' : (r.data.error || 'Server ' + r.status)); }
 
-var IQ_COUNTERS = ['stock', 'incoming'];
-var IQ_HIST = ['history', 'histCens', 'histDay'];
 function iqSame(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 // Fields iqRecompute derives — never evidence that someone edited a product.
 var IQ_DERIVED = { status: 1, planDemand: 1, ss: 1, rop: 1, eoq: 1, max: 1, cls: 1 };
@@ -419,10 +498,8 @@ function iqSameProduct(a, b) {
 // Three-way merge of product lists against the last synced base.
 // - unchanged on one side → take the other side (covers adds, edits and deletes)
 // - deleted on one side, edited on the other → keep the edit (never lose work)
-// - edited on both → stock/incoming combine both sides' changes (base + Δlocal + Δremote);
-//   sales history comes from the side that logged most recently; other fields: local wins
-//   where local changed, otherwise remote.
-// ponytail: same-day sales logged on both devices undercount that day in history[]; stock is exact.
+// - edited on both → local wins where local changed, otherwise remote.
+// Stock, incoming and sales history are then rebuilt by event replay (iqMergeSnap).
 function iqMerge3(base, local, remote) {
   base = iqClean(base); local = iqClean(local); remote = iqClean(remote); // same normal form on all three sides
   var B = {}, L = {}, R = {}, ids = [], seen = {};
@@ -441,12 +518,77 @@ function iqMerge3(base, local, remote) {
     var m = {}, k;
     for (k in r) m[k] = r[k];
     for (k in l) if (!IQ_DERIVED[k] && !iqSame(l[k], b[k])) m[k] = l[k];
-    IQ_COUNTERS.forEach(function (k) { m[k] = Math.max(0, iqNum(b[k]) + (iqNum(l[k]) - iqNum(b[k])) + (iqNum(r[k]) - iqNum(b[k]))); });
-    var src = String(l.histDay || '') >= String(r.histDay || '') ? l : r;
-    IQ_HIST.forEach(function (k) { m[k] = src[k]; });
     out.push(m);
   });
   return out;
+}
+
+/* ── Event replay ── */
+// Replay order: calendar day, then time, then id (deterministic on every device).
+function iqEvOrder(a, b) { return a.day < b.day ? -1 : a.day > b.day ? 1 : a.t - b.t || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0); }
+// Events not yet reflected in a base snapshot whose events are bev, in replay order.
+// ponytail: events older than the base's oldest are treated as already applied (they could
+// only be ones trimmed from the base) — a device offline past the 120-day trim loses them.
+function iqFresh(bev, evs) {
+  var seen = {}, floor = Infinity;
+  bev.forEach(function (e) { seen[e.id] = 1; if (e.t < floor) floor = e.t; });
+  if (!bev.length) floor = 0;
+  return evs.filter(function (e) { return e && typeof e.id === 'string' && !seen[e.id] && e.t >= floor; }).sort(iqEvOrder);
+}
+// Stock, incoming and history of base product b after the events (already in replay order).
+// A delivery received on two devices counts once: a receive takes at most what's incoming.
+function iqReplay(b, evs) {
+  var p = { stock: iqNum(b.stock), incoming: iqNum(b.incoming), history: (b.history || []).slice(), histCens: (b.histCens || []).slice(), histDay: b.histDay };
+  evs.forEach(function (e) {
+    if (e.type === 'close') { if (p.histDay !== e.day) iqLogSale(p, 0, e.day, !(p.stock > 0)); return; }
+    if (e.pid !== b.id) return;
+    var q = iqNum(e.q);
+    if (e.type === 'sale') { p.stock = Math.max(0, p.stock - q); iqLogSale(p, q, e.day, !!e.cens); }
+    else if (e.type === 'order') p.incoming += q;
+    else if (e.type === 'receive') { q = Math.min(q, p.incoming); p.stock += q; p.incoming -= q; }
+    else if (e.type === 'adjust') { p.stock = iqNum(e.stock); p.incoming = iqNum(e.incoming); }
+  });
+  return p;
+}
+// Stock edits that no event explains (edit forms, restores, older clients) become absolute
+// 'adjust' events at time t, so replaying base + events reproduces ps exactly.
+function iqAdjusts(baseProds, ps, fresh, t) {
+  var B = {}, out = [];
+  iqClean(baseProds).forEach(function (b) { B[b.id] = b; });
+  ps.forEach(function (p) {
+    var b = B[p.id];
+    if (!b) return; // added since the base: the product itself carries its stock
+    var r = iqReplay(b, fresh), s = iqNum(p.stock), inc = iqNum(p.incoming);
+    if (r.stock !== s || r.incoming !== inc) out.push({ id: iqUid(), t: t, day: iqToday(new Date(t)), type: 'adjust', pid: p.id, stock: s, incoming: inc });
+  });
+  return out;
+}
+// Merge after a 409. base/local/remote = { products, events }; rt = when remote was saved.
+// Field edits, adds and deletes: iqMerge3. Stock, incoming and history: replay every event
+// the base hasn't seen (union by id, so our own already-landed events never apply twice).
+// Two sides correcting one product's stock to different values: the later wins and is
+// reported in conflicts [{ name, kept }].
+function iqMergeSnap(base, local, remote, rt) {
+  var bev = base.events || remote.events || []; // base from before events existed: treat the server's as applied
+  var radj = iqAdjusts(base.products, remote.products, iqFresh(bev, remote.events), rt);
+  var events = iqTrimEvents(iqUnion([bev, remote.events, radj, local.events]));
+  var fresh = iqFresh(bev, events), B = {}, mine = {}, conflicts = [];
+  iqClean(base.products).forEach(function (b) { B[b.id] = b; });
+  local.events.forEach(function (e) { mine[e.id] = 1; });
+  var products = iqMerge3(base.products, local.products, remote.products);
+  products.forEach(function (p) {
+    var b = B[p.id];
+    if (!b) return;
+    var r = iqReplay(b, fresh);
+    p.stock = r.stock; p.history = r.history; p.histCens = r.histCens;
+    if (r.incoming || 'incoming' in p) p.incoming = r.incoming; // don't add fields: an unchanged product must stay identical to its base
+    if (r.histDay != null) p.histDay = r.histDay;
+    var adj = fresh.filter(function (e) { return e.type === 'adjust' && e.pid === p.id; });
+    var sides = {}, vals = {};
+    adj.forEach(function (e) { sides[mine[e.id] ? 'l' : 'r'] = 1; vals[e.stock + '/' + e.incoming] = 1; });
+    if (sides.l && sides.r && Object.keys(vals).length > 1) conflicts.push({ name: p.name, kept: adj[adj.length - 1].stock });
+  });
+  return { products: products, events: events, conflicts: conflicts };
 }
 // Sales log entries are events with a unique id; union them.
 function iqMergeSales(local, remote) {
@@ -470,8 +612,9 @@ function iqBusy(on) {
   } else if (!on && el) el.remove();
 }
 
-// Resolves { mode, merged }: merged is { data, sales } when another device had saved first —
-// the caller must adopt it, since that's now what the cloud holds.
+// Resolves { mode, merged, conflicts }: merged is { data, sales } when another device had
+// saved first — the caller must adopt it, since that's now what the cloud holds. conflicts
+// lists products whose stock was corrected differently on two devices ([{ name, kept }]).
 function iqPush(prods, sales) {
   sales = sales || [];
   if (!iqCloudReady()) {
@@ -488,26 +631,34 @@ function iqPush(prods, sales) {
   });
   return ready.then(function (s) {
     var path = '/api/stores/' + s.storeId + '/snapshot', base = IQ_BASE || { version: 0, products: [], sales: [] };
-    var out = { products: prods, sales: sales }, merged = false;
-    return iqApi('PUT', path, s.token, { baseVersion: base.version, products: prods, sales: sales }).then(function (r) {
+    // Stock edits no event explains become adjust events now, before anything is sent, so a
+    // retry of this push carries the same ids.
+    var ev = iqEvents().filter(function (e) { return IQ_EV_SEEN[e.id]; });
+    var adj = iqSeen(iqAdjusts(base.products, prods, iqFresh(base.events || [], ev), Date.now()));
+    if (adj.length) { iqSaveEvents(iqEvents().concat(adj)); ev = ev.concat(adj); }
+    var out = { products: prods, sales: sales, events: ev }, merged = false, conflicts = [];
+    return iqApi('PUT', path, s.token, { baseVersion: base.version, products: prods, sales: sales, events: ev }).then(function (r) {
       if (r.status !== 409) return r;
       return iqApi('GET', path, s.token).then(function (g) {
         if (g.status !== 200) iqFail(g);
-        var rp = iqClean(g.data.products), rs = iqScrub(g.data.sales || []);
-        out = { products: iqMerge3(base.products, prods, rp), sales: iqMergeSales(sales, rs) };
-        merged = true;
-        return iqApi('PUT', path, s.token, { baseVersion: g.data.version, products: out.products, sales: out.sales });
+        var remote = { products: iqClean(g.data.products), events: iqScrub(g.data.events || []) };
+        var m = iqMergeSnap(base, { products: prods, events: ev }, remote, Date.parse(g.data.updatedAt) || Date.now());
+        out = { products: m.products, sales: iqMergeSales(sales, iqScrub(g.data.sales || [])), events: m.events };
+        merged = true; conflicts = m.conflicts;
+        return iqApi('PUT', path, s.token, { baseVersion: g.data.version, products: out.products, sales: out.sales, events: out.events });
       });
     }).then(function (r) {
       if (r.status !== 200) iqFail(r);
-      iqSetBase(r.data.version, out.products, out.sales);
-      return { mode: 'cloud', merged: merged ? { data: out.products, sales: out.sales } : null };
+      if (merged) iqSaveEvents(iqUnion([iqEvents(), iqSeen(out.events)])); // keep other tabs' unsynced events
+      iqSetBase(r.data.version, out.products, out.sales, out.events);
+      return { mode: 'cloud', merged: merged ? { data: out.products, sales: out.sales } : null, conflicts: conflicts };
     });
   }).then(function (res) { iqBusy(false); return res; }, function (e) { iqBusy(false); throw e; });
 }
 
 // code: a link code from another device, or blank for this store's latest.
-// Resolves null when nothing is saved. Call snap.commit() only after the user
+// Resolves null only when nothing was ever saved; a saved empty catalog comes back as
+// data: [] (restoring it clears this device). Call snap.commit() only after the user
 // confirms the restore — it links this device to that store from then on.
 function iqPull(code) {
   code = (code || '').trim();
@@ -526,13 +677,14 @@ function iqPull(code) {
   return iqApi('GET', '/api/stores/' + s.storeId + '/snapshot', s.token).then(function (r) {
     if (r.status !== 200) iqFail(r);
     if (!r.data.version) return null;
-    var data = iqClean(r.data.products), sales = iqScrub(r.data.sales || []);
+    var data = iqClean(r.data.products), sales = iqScrub(r.data.sales || []), events = iqScrub(r.data.events || []);
     return { mode: 'cloud', data: data, sales: sales, ts: r.data.updatedAt,
-      commit: function () { iqStore(s); iqSetBase(r.data.version, data, sales); } };
+      commit: function () { iqStore(s); iqSaveEvents(iqSeen(events)); iqSetBase(r.data.version, data, sales, events); } };
   });
 }
 
-if (typeof module !== 'undefined') module.exports = { iqMerge3: iqMerge3, iqMergeSales: iqMergeSales, iqRecordDay: iqRecordDay, iqAiClean: iqAiClean, iqAttr: iqAttr, iqObs: iqObs, iqPush: iqPush, iqPull: iqPull, iqNeedsAction: iqNeedsAction, iqReceive: iqReceive, iqScrub: iqScrub, iqClean: iqClean, iqSafeTip: iqSafeTip, iqLogSale: iqLogSale, linReg: linReg, iqForecast: iqForecast,
+if (typeof module !== 'undefined') module.exports = { iqMerge3: iqMerge3, iqMergeSales: iqMergeSales, iqRecordDay: iqRecordDay, iqAiClean: iqAiClean, iqAttr: iqAttr, iqCensMean: iqCensMean, iqPush: iqPush,
+  iqCompleteDay: iqCompleteDay, iqMarkOrdered: iqMarkOrdered, iqReplay: iqReplay, iqMergeSnap: iqMergeSnap, iqFresh: iqFresh, iqAdjusts: iqAdjusts, iqEvents: iqEvents, iqSaveEvents: iqSaveEvents, iqPull: iqPull, iqNeedsAction: iqNeedsAction, iqReceive: iqReceive, iqScrub: iqScrub, iqClean: iqClean, iqSafeTip: iqSafeTip, iqLogSale: iqLogSale, linReg: linReg, iqForecast: iqForecast,
   IQ_PARAMS: IQ_PARAMS, iqDemand: iqDemand, iqSigma: iqSigma, iqSafetyStock: iqSafetyStock, iqROP: iqROP, iqEOQ: iqEOQ, iqRecompute: iqRecompute,
   iqCover: iqCover, iqLostUnits: iqLostUnits, iqRevAtRisk: iqRevAtRisk, iqStatus: iqStatus, iqShouldOrder: iqShouldOrder, iqOrderQty: iqOrderQty,
   iqHealth: iqHealth, iqSimulate: iqSimulate };

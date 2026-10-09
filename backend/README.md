@@ -51,7 +51,7 @@ No body. Creates an empty store.
 
 Header `Authorization: Bearer <token>`.
 
-`200 { "version": 3, "updatedAt": "2026-10-08T10:15:00.000Z", "products": [...], "sales": [...] }`
+`200 { "version": 3, "updatedAt": "2026-10-08T10:15:00.000Z", "products": [...], "sales": [...], "events": [...] }`
 
 A store that was never saved returns `version: 0`, `updatedAt: null` and empty arrays
 (not 404), so the first push is always `baseVersion: 0`.
@@ -61,17 +61,19 @@ A store that was never saved returns `version: 0`, `updatedAt: null` and empty a
 Header `Authorization: Bearer <token>`. Body:
 
 ```json
-{ "baseVersion": 3, "products": [{ "id": 1, "name": "Atta 5kg", "stock": 12 }], "sales": [] }
+{ "baseVersion": 3, "products": [{ "id": 1, "name": "Atta 5kg", "stock": 12 }], "sales": [], "events": [] }
 ```
 
 | Status | Body | When |
 |---|---|---|
 | 200 | `{ "version": 4, "updatedAt": "..." }` | saved; `baseVersion` matched |
 | 409 | `{ "error", "version", "updatedAt" }` | `baseVersion` is not the current version — nothing was written; GET, merge, retry |
-| 400 | `{ "error" }` | not JSON; `baseVersion` not an integer; `products` not an array, > 5000 items, or an item without a finite numeric `id`; `sales` not an array/null |
+| 400 | `{ "error" }` | not JSON; `baseVersion` not an integer; `products` not an array, > 5000 items, or an item without a finite numeric `id`; `sales` not an array/null; `events` not an array/null, > 5000 items, or an item without a string `id` (≤ 64 chars) |
 | 413 | `{ "error" }` | body > 1 MB |
 
-`sales: null` (or missing) is stored as `[]`. The snapshot replaces the previous one whole.
+`sales` and `events` null (or missing) are stored as `[]`. The snapshot replaces the previous one whole.
+`events` is the clients' stock event log (sale / order / receive / adjust / close, each with a unique `id`);
+on a 409 clients merge by replaying the events the base hadn't seen, so the server only stores it.
 
 ### Auth errors (both snapshot routes)
 
@@ -91,7 +93,8 @@ so the route refuses to run (503) without the `LIMITER` and `DB` bindings.
 `500` `GROQ_API_KEY` missing · `502` upstream unreachable · `503` LIMITER/DB binding missing.
 
 Upgrading an existing deploy? Re-run the schema (`wrangler d1 execute inventoryiq --remote --file=schema.sql`) —
-it only adds the `ai_usage` table.
+it only adds the `ai_usage` table. A `stores` table from before the `events` column also needs, once:
+`wrangler d1 execute inventoryiq --remote --command "ALTER TABLE stores ADD COLUMN events TEXT NOT NULL DEFAULT '[]'"`.
 
 ## CORS
 

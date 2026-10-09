@@ -53,23 +53,25 @@ assert.notEqual(stored.token_hash, token, 'only the hash is stored');
 // get before any save: version 0, empty arrays
 r = await call('GET', `/api/stores/${storeId}/snapshot`, { token });
 assert.equal(r.status, 200);
-assert.deepEqual(await r.json(), { version: 0, updatedAt: null, products: [], sales: [] });
+assert.deepEqual(await r.json(), { version: 0, updatedAt: null, products: [], sales: [], events: [] });
 
 // put/get roundtrip
 const products = [{ id: 1, name: 'Atta 5kg', stock: 12, rop: 8, history: [3, 4] }, { id: 2.5, name: 'Dal' }];
 const sales = [{ id: 1, qty: 2, at: '2026-10-08' }];
-r = await put(storeId, token, { baseVersion: 0, products, sales });
+const events = [{ id: 'k3x9', t: 1791574941396, type: 'sale', day: '2026-10-02', pid: 1, q: 3, cens: 0 }];
+r = await put(storeId, token, { baseVersion: 0, products, sales, events });
 assert.equal(r.status, 200);
 const saved = await r.json();
 assert.equal(saved.version, 1);
 assert.ok(!Number.isNaN(Date.parse(saved.updatedAt)));
 r = await call('GET', `/api/stores/${storeId}/snapshot`, { token });
-assert.deepEqual(await r.json(), { version: 1, updatedAt: saved.updatedAt, products, sales });
+assert.deepEqual(await r.json(), { version: 1, updatedAt: saved.updatedAt, products, sales, events });
 
-// sales: null is stored as []
+// sales/events: null or missing is stored as []
 r = await put(storeId, token, { baseVersion: 1, products, sales: null });
 assert.equal((await r.json()).version, 2);
-assert.deepEqual((await (await call('GET', `/api/stores/${storeId}/snapshot`, { token })).json()).sales, []);
+const got = await (await call('GET', `/api/stores/${storeId}/snapshot`, { token })).json();
+assert.deepEqual([got.sales, got.events], [[], []]);
 
 // stale baseVersion -> 409 with current version, nothing overwritten
 r = await put(storeId, token, { baseVersion: 1, products: [], sales: [] });
@@ -99,6 +101,11 @@ for (const body of [
   { baseVersion: 2, products: [null] },
   { baseVersion: 2, products: Array.from({ length: 5001 }, (_, i) => ({ id: i })) },
   { baseVersion: 2, products: [], sales: 'x' },
+  { baseVersion: 2, products: [], events: 'x' },
+  { baseVersion: 2, products: [], events: [{ t: 1 }] },
+  { baseVersion: 2, products: [], events: [{ id: 7 }] },
+  { baseVersion: 2, products: [], events: [{ id: 'x'.repeat(65) }] },
+  { baseVersion: 2, products: [], events: Array.from({ length: 5001 }, (_, i) => ({ id: 'e' + i })) },
   { baseVersion: '2', products: [] },
   { products: [] },
 ]) assert.equal((await put(storeId, token, body)).status, 400, JSON.stringify(body).slice(0, 80));

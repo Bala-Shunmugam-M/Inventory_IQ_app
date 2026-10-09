@@ -8,8 +8,11 @@ CREATE TABLE IF NOT EXISTS stores (
   updated_at TEXT,                           -- ISO-8601, NULL until the first save
   products   TEXT NOT NULL DEFAULT '[]',     -- JSON array
   sales      TEXT NOT NULL DEFAULT '[]',     -- JSON array
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  events     TEXT NOT NULL DEFAULT '[]'      -- JSON array of stock events (sale/order/receive/adjust/close), replayed on merge
 );
+-- Existing database from before the events column? Run once:
+--   wrangler d1 execute inventoryiq --remote --command "ALTER TABLE stores ADD COLUMN events TEXT NOT NULL DEFAULT '[]'"
 
 -- Global AI call counter per UTC day (bounds the Groq bill; cap = AI_DAILY_CAP).
 CREATE TABLE IF NOT EXISTS ai_usage (
