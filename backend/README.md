@@ -82,10 +82,16 @@ so the API never reveals which store ids exist.
 
 Body `{ "messages": [{ "role": "user", "content": "..." }], "temperature"?, "max_tokens"? }`.
 Returns Groq's chat-completion JSON unchanged. Model is pinned, `max_tokens` capped at 2000,
-body capped at 64 KB, 20 calls/min per IP.
+body capped at 64 KB, 20 calls/min per IP, and a **global cap of 300 calls per UTC day** across all
+users (counted in D1 table `ai_usage`; change it with a `AI_DAILY_CAP` var in wrangler.toml).
+Origin checks only stop browsers — the per-IP limit and the daily cap are what bound the Groq bill,
+so the route refuses to run (503) without the `LIMITER` and `DB` bindings.
 
-`403` origin not in `ALLOWED_ORIGINS` · `400` bad body · `413` too large · `429` rate limited ·
-`500` `GROQ_API_KEY` missing · `502` upstream unreachable.
+`403` origin not in `ALLOWED_ORIGINS` · `400` bad body · `413` too large · `429` rate limited or daily cap reached ·
+`500` `GROQ_API_KEY` missing · `502` upstream unreachable · `503` LIMITER/DB binding missing.
+
+Upgrading an existing deploy? Re-run the schema (`wrangler d1 execute inventoryiq --remote --file=schema.sql`) —
+it only adds the `ai_usage` table.
 
 ## CORS
 

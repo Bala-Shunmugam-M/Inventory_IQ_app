@@ -119,6 +119,7 @@ device wins on clashes, sales logs combined) and saves again, so nothing is sile
 node tests/check.mjs        # inventory engine + data hygiene
 node tests/sync.mjs         # web client ⇄ real backend, end to end (in-memory SQLite)
 node backend/test/run.mjs   # backend API + AI proxy
+node tests/mobile-parity.mjs # React Native engine gives the same numbers as the web
 ```
 
 ---

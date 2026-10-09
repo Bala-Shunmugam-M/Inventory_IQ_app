@@ -10,3 +10,9 @@ CREATE TABLE IF NOT EXISTS stores (
   sales      TEXT NOT NULL DEFAULT '[]',     -- JSON array
   created_at TEXT NOT NULL
 );
+
+-- Global AI call counter per UTC day (bounds the Groq bill; cap = AI_DAILY_CAP).
+CREATE TABLE IF NOT EXISTS ai_usage (
+  day   TEXT PRIMARY KEY,                    -- YYYY-MM-DD (UTC)
+  calls INTEGER NOT NULL DEFAULT 0
+);

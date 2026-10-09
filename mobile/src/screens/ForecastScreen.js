@@ -6,7 +6,7 @@
  *   forecast = 0.6 × Trend(next) + 0.4 × MA7
  *
  * Shows forecast accuracy (backtest: 1 − WAPE on the last 7 logged days),
- * a 90% range, trend per week, and a recommendation for the next order.
+ * a typical error band, trend per week, and a recommendation for the next order.
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -61,7 +61,7 @@ export default function ForecastScreen({ navigation }) {
       <View style={styles.headerCard}>
         <Text style={styles.headerTitle}>📈 Demand Forecast</Text>
         <Text style={styles.headerSub}>
-          Trend + 7-day moving average · 90% range
+          Trend + 7-day moving average · ± typical error
         </Text>
       </View>
 

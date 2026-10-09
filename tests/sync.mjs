@@ -24,8 +24,7 @@ const DB = {
 const coreSrc = readFileSync(new URL('../docs/iq-core.js', import.meta.url), 'utf8');
 
 // One "browser": its own localStorage, fetch routed straight into the Worker.
-function device(api = 'https://api.example') {
-  const store = new Map();
+function device(api = 'https://api.example', store = new Map()) { // pass a shared store to model two tabs of one browser
   const ctx = {
     localStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) },
     fetch: (url, init) => worker.fetch(new Request(url, init), { DB }),
@@ -59,6 +58,7 @@ r = await B.iqPush([prod(1, 'Atta', 10), prod(2, 'Salt', 5), prod(3, 'Soap', 7)]
 assert.ok(r.merged, 'stale save must merge, not overwrite');
 assert.deepEqual(names(r.merged.data), ['Atta', 'Salt', 'Soap']);
 assert.equal(r.merged.sales.length, 2, 'sales from both devices kept');
+assert.equal(r.merged.data.find((p) => p.id === 1).stock, 99, "A's edit survives B's merge (B never touched Atta)");
 
 // A pulls its own store and sees everything
 snap = await A.iqPull('');
@@ -78,6 +78,20 @@ await assert.rejects(C.iqPull(''), /not synced yet/);
 await A.iqPush([prod(4, '<img src=x onerror=alert(1)>Evil', 1)], []);
 snap = await B.iqPull('');
 assert.equal(snap.data.find((p) => p.id === 4).name, 'img src=x onerror=alert(1)Evil');
+
+// Two tabs of one browser: a stale tab can't reuse the newer tab's version to skip the conflict check
+const shared = new Map(), T1 = device(undefined, shared);
+await T1.iqPush([prod(1, 'Atta', 20)], []);
+const T2 = device(undefined, shared); // loads the same base as T1
+await T1.iqPush([prod(1, 'Atta', 17)], []); // T1 sells 3
+r = await T2.iqPush([prod(1, 'Atta', 20)], []); // T2 is stale and unchanged
+assert.ok(r.merged, 'stale tab must hit the conflict path');
+assert.equal(r.merged.data[0].stock, 17, "stale tab doesn't overwrite the newer stock");
+
+// Clearing the catalog syncs (deletes aren't resurrected)
+r = await T1.iqPush([], []);
+assert.equal(r.mode, 'cloud');
+assert.equal((await T1.iqPull('')).data.length, 0);
 
 // Unconfigured: everything stays local
 const L = device('');

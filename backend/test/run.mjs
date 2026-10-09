@@ -22,7 +22,8 @@ function d1(db) {
 }
 const db = new DatabaseSync(':memory:');
 db.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
-const env = { DB: d1(db), GROQ_API_KEY: 'k' };
+const allow = { limit: async () => ({ success: true }) };
+const env = { DB: d1(db), GROQ_API_KEY: 'k', LIMITER: allow };
 
 const ORIGIN = ALLOWED_ORIGINS[0];
 const call = (method, path, { token, body, origin, e = env } = {}) => {
@@ -105,9 +106,20 @@ assert.equal((await call('PUT', `/api/stores/${storeId}/snapshot`, { token, body
 // non-JSON numbers can't sneak in: JSON has no NaN/Infinity, and 1e999 parses to Infinity
 assert.equal((await call('PUT', `/api/stores/${storeId}/snapshot`, { token, body: '{"baseVersion":2,"products":[{"id":1e999}]}' })).status, 400);
 
+// field validation: no numbers-as-strings, negatives, duplicate ids or junk sales (review cases)
+for (const products of [[{ id: 1, stock: '10' }], [{ id: 1, sell: -5 }], [{ id: 1 }, { id: 1 }], [{ id: 1, history: [1, -2] }], [{ id: 1, name: 5 }]])
+  assert.equal((await put(storeId, token, { baseVersion: 2, products })).status, 400, JSON.stringify(products));
+assert.equal((await put(storeId, token, { baseVersion: 2, products: [], sales: ['x'] })).status, 400);
+
 // store creation is rate limited when LIMITER is bound
 const deny = { ...env, LIMITER: { limit: async () => ({ success: false }) } };
 assert.equal((await call('POST', '/api/stores', { e: deny })).status, 429);
+// …and so are snapshot reads/writes, before the token is even checked
+assert.equal((await call('GET', `/api/stores/${storeId}/snapshot`, { token, e: deny })).status, 429);
+assert.equal((await call('PUT', `/api/stores/${storeId}/snapshot`, { token: 'wrong', body: '{}', e: deny })).status, 429);
+// oversized bodies are rejected from Content-Length without reading them
+r = await worker.fetch(new Request(`https://w.example/api/stores/${storeId}/snapshot`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Length': '5000000' }, body: 'x' }), env);
+assert.equal(r.status, 413);
 
 // OPTIONS preflight
 r = await call('OPTIONS', `/api/stores/${storeId}/snapshot`, { origin: 'http://localhost:5173' });
@@ -155,6 +167,13 @@ try {
     assert.equal(JSON.parse(sent.init.body).model, 'llama-3.3-70b-versatile');
     assert.equal(sent.init.headers.Authorization, 'Bearer k');
   }
+  // the AI route fails closed without its abuse controls…
+  r = await call('POST', '/api/ai', { origin: ORIGIN, body: '{"messages":[{"role":"user","content":"hi"}]}', e: { ...env, LIMITER: undefined } });
+  assert.equal(r.status, 503);
+  // …and stops at the global daily cap
+  const capped = { ...env, AI_DAILY_CAP: '3' }; // 2 calls already used above today
+  assert.equal((await call('POST', '/api/ai', { origin: ORIGIN, body: '{"messages":[{"role":"user","content":"hi"}]}', e: capped })).status, 200);
+  assert.equal((await call('POST', '/api/ai', { origin: ORIGIN, body: '{"messages":[{"role":"user","content":"hi"}]}', e: capped })).status, 429);
 } finally {
   globalThis.fetch = realFetch;
 }

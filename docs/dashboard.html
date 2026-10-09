@@ -283,7 +283,7 @@ html,body{height:100%;background:var(--bg);font-family:var(--font);-webkit-font-
 
     <div class="screen" id="s-forecast">
       <div class="card">
-        <div class="card-h"><div class="card-t">📈 Demand Forecast — Linear Regression</div><div class="card-s">Next-day prediction with 90% CI</div></div>
+        <div class="card-h"><div class="card-t">📈 Demand Forecast — Linear Regression</div><div class="card-s">Next-day prediction with typical error band</div></div>
         <div id="forecastList"></div>
       </div>
     </div>
@@ -704,7 +704,7 @@ function consultLLM(question,cb,err){
    .then(function(r){return r.text();})
    .then(function(t){var j=JSON.parse(t);var c=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||'').trim();
      if(c.indexOf('```')===0)c=c.replace(/^```(json)?/i,'').replace(/```$/,'').trim();
-     var s=c.indexOf('{'),e=c.lastIndexOf('}');c=s<0?c:c.slice(s,e+1);cb(JSON.parse(c));})
+     var s=c.indexOf('{'),e=c.lastIndexOf('}');c=s<0?c:c.slice(s,e+1);cb(iqAiClean(JSON.parse(c)));})
    .catch(function(e){err(e.message);});
 }
 function renderConsultant(){
@@ -936,16 +936,16 @@ function renderOrders(){
         +'<td>'+iqLead(p)+'d</td>'
         +'<td>'+(p.supplier||'—')+'</td>'
         +'<td><span class="pill '+st+'">'+stl+'</span></td>'
-        +'<td><button class="act-btn" onclick="markOrdered('+p.id+')">📦 Mark Ordered</button>'+(p.incoming?' <button class="act-btn" onclick="receiveStock('+p.id+')">📥 Receive '+p.incoming+'</button>':'')+'</td>'
+        +'<td>'+(qty>0?'<button class="act-btn" onclick="markOrdered('+p.id+')">📦 Mark Ordered</button>':'<span style="font-size:11px;color:var(--muted);font-weight:700">✓ On order</span>')+(p.incoming?' <button class="act-btn" onclick="receiveStock('+p.id+')">📥 Receive '+p.incoming+'</button>':'')+'</td>'
         +'</tr>';
     }).join('')+'</tbody></table></div>';
 }
-function markOrdered(id){var p=PRODS.find(function(x){return x.id===id;});if(!p)return;var q=iqOrderQty(p);p.incoming=(p.incoming||0)+q;saveProds();toast('✅ Marked '+q+' units as ordered','green');renderOrders();updateBadges();}
+function markOrdered(id){var p=PRODS.find(function(x){return x.id===id;});if(!p)return;var q=iqOrderQty(p);if(!q){toast('Enough is already on order — nothing to add');return;}p.incoming=(p.incoming||0)+q;saveProds();toast('✅ Marked '+q+' units as ordered','green');renderOrders();updateBadges();}
 function receiveStock(id){var p=PRODS.find(function(x){return x.id===id;});if(!p||!p.incoming)return;var n=p.incoming;iqReceive(p);recomputeAllStatus();saveProds();toast('📥 Received '+n+' units of '+p.name,'green');renderOrders();updateBadges();}
 
 function renderForecast(){
   if(!PRODS.length){document.getElementById('forecastList').innerHTML='<div class="empty"><div class="empty-ico">📈</div><div class="empty-t">No forecast available</div><div class="empty-s">Add products to see demand predictions</div></div>';return;}
-  document.getElementById('forecastList').innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Product</th><th>Trend</th><th>Forecast (next day)</th><th>Accuracy (backtest)</th><th>90% range</th><th>Recommendation</th></tr></thead><tbody>'
+  document.getElementById('forecastList').innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Product</th><th>Trend</th><th>Forecast (next day)</th><th>Accuracy (backtest)</th><th>± typical error</th><th>Recommendation</th></tr></thead><tbody>'
     +PRODS.map(function(p){
       var f=iqForecast(p),fcast=f.forecast,ci=f.ci,up=f.trend==='up',dn=f.trend==='down';
       var trend=up?'📈 Up':dn?'📉 Down':'➡️ Stable';
@@ -1174,7 +1174,7 @@ function exportCSV(){
   toast('✅ CSV exported','green');
 }
 function syncToCloud(){
-  if(!PRODS.length){toast('Nothing to sync — add products first','red');return;}
+  if(!PRODS.length&&!iqLinkCode()){toast('Nothing to sync — add products first','red');return;}
   try{var h=JSON.parse(localStorage.getItem(SYNC_HIST_KEY)||'[]');h.push({ts:new Date().toISOString(),count:PRODS.length,snapshot:JSON.parse(JSON.stringify(PRODS))});if(h.length>5)h=h.slice(-5);localStorage.setItem(SYNC_HIST_KEY,JSON.stringify(h));}catch(e){}
   iqPush(PRODS,loadSalesLog()).then(function(r){
     localStorage.setItem('iq_last_sync',Date.now().toString());
@@ -1334,7 +1334,7 @@ window.addEventListener('storage',function(e){
     var url=AI_CFG.proxy?AI_CFG.proxy.replace(/\/$/,''):AI_CFG.baseUrl+'/chat/completions';var hd={'Content-Type':'text/plain;charset=UTF-8'};if(!AI_CFG.proxy)hd.Authorization='Bearer '+AI_CFG.apiKey;
     fetch(url,{method:'POST',headers:hd,body:JSON.stringify({model:AI_CFG.model,temperature:0.3,max_tokens:1800,messages:[{role:'system',content:SYS},{role:'user',content:'Analyze this inventory snapshot and return the diagnostic JSON.\n'+JSON.stringify(payload(),null,2)}]})})
      .then(function(r){return r.text().then(function(t){if(!r.ok)throw new Error('Provider '+r.status+': '+t.slice(0,160));return t;});})
-     .then(function(t){var j=JSON.parse(t);var c=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'';render(JSON.parse(strip(c)));})
+     .then(function(t){var j=JSON.parse(t);var c=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'';render(iqAiClean(JSON.parse(strip(c))));})
      .catch(function(err){out.innerHTML='<div style="color:#F43F5E;font-size:12px">'+esc(err.message)+'</div>';})
      .then(function(){b.disabled=false;b.textContent='✦  Regenerate Plan';});
   };

@@ -95,7 +95,7 @@ export default function HomeScreen({ navigation }) {
     >
       {/* Health summary card */}
       <View style={styles.heroCard}>
-        <Text style={styles.heroLabel}>Today's Health</Text>
+        <Text style={styles.heroLabel}>Products in good stock</Text>
         <Text style={styles.heroValue}>{kpi.healthPct}%</Text>
         <View style={styles.heroBar}>
           <View

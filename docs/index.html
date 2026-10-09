@@ -1513,7 +1513,7 @@ function initForecast(){
       +'<div style="flex:1;background:var(--bg);border-radius:9px;padding:9px"><div style="font-size:9px;font-weight:800;color:var(--muted)">TREND / WEEK</div><div style="font-size:18px;font-weight:800;color:'+tc+'">'+(trend==='up'?'+':trend==='down'?'−':'')+tpct+'%</div>'+spark+'</div></div>'
       +'<div style="background:var(--blue-l);border-radius:9px;padding:9px;margin-top:8px"><div style="font-size:9px;font-weight:800;color:var(--blue)">RECOMMENDATION</div><div style="font-size:12px;font-weight:700;color:var(--ink)">'+rec+'</div></div></div>';
   }).join('');
-  box.innerHTML=h+'<div style="font-size:10px;color:var(--muted);text-align:center;margin-top:6px;line-height:15px">Forecast = 0.6×Trend + 0.4×7-day avg · ±90% range · Accuracy = 1 − average % error when the last 7 logged days are forecast from the days before. Log sales daily for better accuracy.</div>';
+  box.innerHTML=h+'<div style="font-size:10px;color:var(--muted);text-align:center;margin-top:6px;line-height:15px">Forecast = 0.6×Trend + 0.4×7-day avg · ± typical error · Accuracy = 1 − average % error when the last 7 logged days are forecast from the days before. Log sales daily for better accuracy.</div>';
 }
 function initHub(){
   var el=document.getElementById('hubGrid');if(!el)return;
@@ -1609,7 +1609,7 @@ function mConsultLLM(q,cb,err){
   var url=AI_CFG.proxy?AI_CFG.proxy.replace(/\/$/,''):AI_CFG.baseUrl+'/chat/completions';var hd={'Content-Type':'text/plain;charset=UTF-8'};if(!AI_CFG.proxy)hd.Authorization='Bearer '+AI_CFG.apiKey;
   var sys='You are InventoryIQ AI — a senior inventory business consultant for a retail store owner. Given the snapshot and question, answer like a consultant explaining WHY with rupee impact. Respond in VALID JSON ONLY: {"answer":"1-2 sentences","causes":[{"title":"short","detail":"one sentence with real numbers","impact_rupees":<number or null>}],"estimated_impact_rupees":<number or null>,"recommended_action":"one action"}. Use only real product names/numbers. Max 3 causes.';
   fetch(url,{method:'POST',headers:hd,body:JSON.stringify({model:AI_CFG.model,temperature:0.4,max_tokens:900,messages:[{role:'system',content:sys},{role:'user',content:'Question: '+q+'\n\nSnapshot:\n'+JSON.stringify(mConsultCtx(),null,2)}]})})
-   .then(function(r){return r.text();}).then(function(t){var j=JSON.parse(t);var c=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||'').trim();if(c.indexOf('```')===0)c=c.replace(/^```(json)?/i,'').replace(/```$/,'').trim();var s=c.indexOf('{'),e=c.lastIndexOf('}');c=s<0?c:c.slice(s,e+1);cb(JSON.parse(c));})
+   .then(function(r){return r.text();}).then(function(t){var j=JSON.parse(t);var c=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||'').trim();if(c.indexOf('```')===0)c=c.replace(/^```(json)?/i,'').replace(/```$/,'').trim();var s=c.indexOf('{'),e=c.lastIndexOf('}');c=s<0?c:c.slice(s,e+1);cb(iqAiClean(JSON.parse(c)));})
    .catch(function(e){err(e.message);});
 }
 function initConsult(){renderMConsult();}
@@ -2022,24 +2022,17 @@ function updateSaveBanner(){
 function doSave(){
   var entered=PRODS.filter(function(p){return (QTY[p.id]||0)>0;});
   if(!entered.length)return;
+  // every product gets today's bucket: unsold = a confirmed zero day, sold out = censored
+  var lines=iqRecordDay(PRODS,QTY);
   var units=0,profit=0,revenue=0;
-  var lines=[];
-  entered.forEach(function(p){
-    var q=QTY[p.id]||0;
-    units+=q;
-    profit+=q*(p.sell-p.cost);
-    revenue+=q*p.sell;
-    p.stock=Math.max(0,p.stock-q);
-    // append to product history (keep last 60 days)
-    iqLogSale(p,q);
-    lines.push({id:p.id,name:p.name,qty:q,revenue:q*p.sell,profit:q*(p.sell-p.cost)});
-  });
+  lines.forEach(function(l){units+=l.qty;profit+=l.profit;revenue+=l.revenue;});
   // recompute statuses after stock change
   recomputeAllStatus();
   // persist
   saveProds();
   // log entry
   saveSalesLog({
+    id:iqUid(),
     date:new Date().toISOString(),
     items:entered.length,
     totalUnits:units,
@@ -2153,7 +2146,7 @@ function initAI(){
     d.className='ai-tip '+(t.type==='action'?'act':t.type==='warning'?'wrn':'pos');
     d.innerHTML='<div class="tip-hd"><div class="tip-iw">'+t.ico+'</div><div><div class="tip-tt">'+t.title+'</div><div class="tip-st">'+t.sub+'</div></div></div>'
       +'<div class="tip-bd">'+t.body+'</div>'
-      +'<div class="tip-ct" onclick="toast(\'→ '+t.cta+'\')">👉 '+t.cta+' →</div>';
+      +'<div class="tip-ct" data-cta="'+iqAttr(t.cta)+'" onclick="toast(\'→ \'+this.dataset.cta)">👉 '+iqAttr(t.cta)+' →</div>';
     ta.appendChild(d);
   });}
   // formula — the real numbers behind this product's plan
@@ -2195,7 +2188,7 @@ function initMore(){
 }
 
 function doSyncCloud(){
-  if(!PRODS.length){toast('Nothing to sync — add products first');return;}
+  if(!PRODS.length&&!iqLinkCode()){toast('Nothing to sync — add products first');return;}
   var ss=document.getElementById('syncStatus');
   if(ss)ss.textContent='Syncing…';
   // Capture pre-sync snapshot for undo
@@ -2517,6 +2510,7 @@ function markOrdered(id){
   var p=PRODS.find(function(x){return x.id===id;});
   if(!p)return;
   var q=iqOrderQty(p);
+  if(!q){toast('Enough is already on order — nothing to add');return;}
   p.incoming=(p.incoming||0)+q;
   saveProds();
   toast('✅ Marked '+q+' units as ordered','green');
@@ -2666,7 +2660,7 @@ function runLLMAdvisor(){
    .then(function(r){return r.text().then(function(t){if(!r.ok)throw new Error('Provider '+r.status+': '+t.slice(0,160));return t;});})
    .then(function(t){
      var j=JSON.parse(t);var txt=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'';
-     var data=JSON.parse(aiStripJson(txt));
+     var data=iqAiClean(JSON.parse(aiStripJson(txt)));
      aiRender(data);
    })
    .catch(function(err){out.innerHTML='<div style="color:#F43F5E;font-size:12px">'+aiEsc(err.message)+'</div>';})

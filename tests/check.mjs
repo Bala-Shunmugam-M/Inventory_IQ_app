@@ -47,19 +47,21 @@ assert.equal(core.iqDemand({ demand: 10, history: [20, 20, 20, 20, 20, 20, 20] }
 assert.equal(core.iqDemand({ demand: 0, history: [4, 6] }), 5, 'no typed demand → logged average');
 
 // σ: CV fallback on short history; sample σ with a √mean floor once there are 7 days
-near(core.iqSigma({ history: [10, 12] }, 10), 3, 1e-9, 'fallback σ = 0.3 × mean');
+near(core.iqSigma({ history: [10, 12] }, 10), Math.sqrt(10), 1e-9, 'short history: max(0.3 × mean, √mean)');
+near(core.iqSigma({ history: [100, 100] }, 100), 30, 1e-9, 'short history: 0.3 × mean when that is larger');
+assert.ok(Math.abs(core.iqSigma({ history: [1, 1, 1, 1, 1, 1] }, 1) - core.iqSigma({ history: [1, 1, 1, 1, 1, 1, 1] }, 1)) < 1e-9, 'no jump at the 7th day');
 near(core.iqSigma({ history: [10, 10, 10, 10, 10, 10, 10] }, 10), Math.sqrt(10), 1e-9, 'flat history → √mean floor');
 near(core.iqSigma({ history: [0, 20, 0, 20, 0, 20, 0, 20] }, 10), Math.sqrt(400 * 8 / 4 / 7), 1e-9, 'sample σ');
 
-// ROP = d·L + z·σ·√L, z by ABC class (95/90/85%)
-assert.equal(core.iqROP(10, 3, 4, 'A'), Math.ceil(40 + 1.65 * 3 * 2));
-assert.equal(core.iqROP(10, 3, 4, 'C'), Math.ceil(40 + 1.04 * 3 * 2));
+// ROP = d·T + z·σ·√T over the protection period T = L + 1 day review, z by ABC class
+assert.equal(core.iqROP(10, 3, 4, 'A'), Math.ceil(50 + 1.65 * 3 * Math.sqrt(5)));
+assert.equal(core.iqROP(10, 3, 4, 'C'), Math.ceil(50 + 1.04 * 3 * Math.sqrt(5)));
 assert.ok(core.iqROP(10, 3, 4, 'A') > core.iqROP(10, 3, 4, 'B'));
-assert.equal(core.iqROP(0, 0, 3, 'A'), 1, 'never below 1');
+assert.equal(core.iqROP(0, 0, 3, 'A'), 0, 'no demand → no reorder point');
 
 // EOQ = √(2·D·S/H), D annual units, S ₹50/order, H = 20% of cost per unit-year
 assert.equal(core.iqEOQ(10, 100), Math.ceil(Math.sqrt(2 * 3650 * 50 / 20)));
-assert.equal(core.iqEOQ(0, 100), 1);
+assert.equal(core.iqEOQ(0, 100), 0, 'no demand → no order');
 
 // ABC: Pareto on annual revenue across the catalog (80/15/5), with manual override
 const cat = core.iqRecompute([
@@ -90,12 +92,54 @@ okP.stock = okP.rop; assert.equal(core.iqStatus(okP), 'order');
 okP.stock = 20; assert.equal(core.iqStatus(okP), 'order', 'exactly lead-time demand is not yet critical');
 okP.stock = 19; assert.equal(core.iqStatus(okP), 'critical');
 
-// Order quantity: back up to ROP + EOQ, never less than EOQ, net of what's already ordered
+// Order quantity: back up to ROP + EOQ net of what's already ordered; zero once that covers it
 const oq = { stock: 0, incoming: 0, rop: 30, eoq: 50 };
 assert.equal(core.iqOrderQty(oq), 80);
 oq.stock = 25; assert.equal(core.iqOrderQty(oq), 55);
-oq.incoming = 55; assert.equal(core.iqOrderQty(oq), 50);
+oq.incoming = 55; assert.equal(core.iqOrderQty(oq), 0, 'enough already on order');
 assert.equal(core.iqShouldOrder(oq), false);
+assert.equal(core.iqOrderQty({ stock: 30, incoming: 100, rop: 30, eoq: 50 }), 0, 'review case: incoming covers it');
+assert.equal(core.iqOrderQty({ stock: 0, incoming: 0, rop: 0, eoq: 0 }), 0, 'zero demand: never reorder');
+const dead = core.iqRecompute([{ id: 1, stock: 0, demand: 0, sell: 5, cost: 4, lead: 2 }])[0];
+assert.deepEqual([dead.rop, dead.eoq, dead.status, core.iqOrderQty(dead)], [0, 0, 'good', 0]);
+assert.equal(core.iqRecompute([{ id: 1, stock: 5, demand: 0.04, sell: 5, cost: 4 }])[0].planDemand, 0.04, 'slow movers keep precision');
+
+// Demand uses confirmed zero-sale days and skips stockout-censored days
+const days = (n) => Array.from({ length: n }, (_, i) => '2026-10-' + String(i + 1).padStart(2, '0'));
+const alt = [{ id: 1, stock: 1000, demand: 0, sell: 1, cost: 1 }];
+days(14).forEach((d, i) => core.iqRecordDay(alt, i % 2 ? {} : { 1: 10 }, d));
+assert.equal(core.iqDemand(alt[0]), 5, 'review case: 10 on alternate days = 5/day, not 10');
+const cens = [{ id: 1, stock: 0, demand: 10, sell: 1, cost: 1 }];
+days(7).forEach((d) => { cens[0].stock = 2; core.iqRecordDay(cens, { 1: 2 }, d); });
+assert.equal(core.iqDemand(cens[0]), 10, 'review case: sold-out days keep the estimate, not 2/day');
+assert.deepEqual(cens[0].histCens, [1, 1, 1, 1, 1, 1, 1]);
+const same = [{ id: 1, stock: 50, demand: 5, sell: 1, cost: 1 }];
+core.iqRecordDay(same, { 1: 2 }, '2026-10-01'); core.iqRecordDay(same, { 1: 3 }, '2026-10-01');
+assert.deepEqual([same[0].history, same[0].stock], [[5], 45], 'two saves in a day = one bucket');
+
+// One service definition: health and an unchanged what-if agree
+const svcCat = core.iqRecompute([{ id: 1, stock: 1, demand: 1, lead: 1, sell: 1, cost: 1 }, { id: 2, stock: 0, demand: 1, lead: 10, sell: 1, cost: 1 }]);
+assert.equal(core.iqHealth(svcCat).serviceLevel, core.iqSimulate(svcCat, 0, 0).service);
+
+// Untrusted data: numbers must be finite and non-negative; LLM numbers forced to numbers
+const [bad] = core.iqClean([{ id: 1, stock: 'Infinity', cost: -5, sell: '12', history: [3, -1, 'x'] }]);
+assert.deepEqual([bad.stock, bad.cost, bad.sell, bad.history], [0, 0, 12, [3, 0, 0]]);
+const ai = core.iqAiClean({ at_risk_skus: [{ sku: '<b>x</b>', days_cover: '<img src=x onerror=alert(1)>' }], recommendations: [{ priority: '"><svg onload=alert(1)>' }] });
+assert.deepEqual([ai.at_risk_skus[0].days_cover, ai.at_risk_skus[0].sku, ai.recommendations[0].priority], [null, 'bx/b', null]);
+assert.equal(core.iqAttr(`');x=1;//"`), '&#39;);x=1;//&quot;');
+
+// Three-way sync merge (review cases)
+const b0 = [{ id: 1, name: 'Atta', stock: 20, price: 10 }, { id: 2, name: 'Salt', stock: 5 }];
+let m = core.iqMerge3(b0, [{ id: 1, name: 'Atta', stock: 17, price: 10 }, b0[1]], [{ id: 1, name: 'Atta', stock: 16, price: 10 }, b0[1]]);
+assert.equal(m.find((x) => x.id === 1).stock, 13, 'both devices sold: 20 − 3 − 4 = 13');
+m = core.iqMerge3(b0, [b0[0]], [b0[0], b0[1]]);
+assert.deepEqual(m.map((x) => x.id), [1], 'local delete is not resurrected');
+m = core.iqMerge3(b0, [b0[0]], [b0[0], { id: 2, name: 'Salt', stock: 9 }]);
+assert.equal(m.find((x) => x.id === 2).stock, 9, 'delete vs remote edit keeps the edit');
+m = core.iqMerge3(b0, [{ id: 1, name: 'Atta 5kg', stock: 20, price: 10 }, b0[1]], [{ id: 1, name: 'Atta', stock: 20, price: 12 }, b0[1]]);
+assert.deepEqual([m[0].name, m[0].price], ['Atta 5kg', 12], 'field-level: each side keeps its own edit');
+const sm = core.iqMergeSales([{ id: 'a', date: '2026-10-08T10:00:00Z' }], [{ id: 'b', date: '2026-10-08T10:00:00Z' }, { id: 'a', date: '2026-10-08T10:00:00Z' }]);
+assert.equal(sm.length, 2, 'same timestamp, different sales: both kept');
 
 // Forecast accuracy is a backtest (1 − WAPE), not R²; null until 7 days
 assert.equal(core.iqForecast({ demand: 5, history: [5, 6, 5] }).acc, null);

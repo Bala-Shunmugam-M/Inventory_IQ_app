@@ -17,6 +17,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Alert } from 'react-native';
 
 export const KEYS = {
   PRODS: 'inventoryiq_v8_data',
@@ -47,21 +48,42 @@ export async function getDeviceId() {
 // ============================================================
 // PRODUCTS (CRUD)
 // ============================================================
+// Store data can come from older builds or another device: numbers must be finite and
+// non-negative ("10" + 5 must be 15, not "105"). Same rules as iqClean in docs/iq-core.js.
+const NUM_FIELDS = ['stock', 'max', 'rop', 'eoq', 'demand', 'cost', 'sell', 'lead', 'incoming'];
+export const num = (x) => { const n = Number(x); return Number.isFinite(n) && n > 0 ? n : 0; };
+export function normalize(p) {
+  const c = { ...p };
+  NUM_FIELDS.forEach((k) => { if (k in c) c[k] = num(c[k]); });
+  c.id = Number(c.id);
+  c.history = Array.isArray(c.history) ? c.history.map(num) : [];
+  c.histCens = c.history.map((_, i) => (Array.isArray(p.histCens) && p.histCens[i] ? 1 : 0));
+  return c;
+}
+
 export async function loadProducts() {
   try {
     const raw = await AsyncStorage.getItem(KEYS.PRODS);
     if (!raw) return [];
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
-    return recomputeAll(arr.filter((p) => p && typeof p === 'object'));
+    return recomputeAll(arr.filter((p) => p && typeof p === 'object').map(normalize).filter((p) => Number.isFinite(p.id)));
   } catch (e) {
     console.warn('loadProducts failed', e);
     return [];
   }
 }
 
+// cloud.js sets busy while a sync is in flight; a save then would be overwritten by the sync result.
+export const SYNC = { busy: false };
+
 // Derived fields (ROP, EOQ, ABC, max, status) are recomputed for the whole catalog on every save.
-export async function saveProducts(products) {
+// Returns false (and tells the user) when nothing was written.
+export async function saveProducts(products, { fromSync = false } = {}) {
+  if (SYNC.busy && !fromSync) {
+    Alert.alert('Sync in progress', 'Try again in a moment.');
+    return false;
+  }
   try {
     recomputeAll(products);
     await AsyncStorage.setItem(KEYS.PRODS, JSON.stringify(products));
@@ -107,9 +129,10 @@ export const IQ_PARAMS = {
   holdRate: 0.2, // holding cost per year as a fraction of unit cost → H = holdRate × cost (₹/unit/year)
   z: { A: 1.65, B: 1.28, C: 1.04 }, // safety factor: 95% / 90% / 85% chance an order cycle has no stockout
   cvFallback: 0.3, // until there are minHistory days of sales, assume σ = 0.3 × mean daily demand
-  minHistory: 7, // logged days before sales fully replace the typed daily demand
+  minHistory: 7, // usable logged days before sales fully replace the typed daily demand
   window: 14, // most recent logged days used for the planning demand and its variability
   abcCut: [0.8, 0.95], // ABC: first 80% of annual revenue = A, next 15% = B, rest = C
+  reviewDays: 1, // R: stock is reviewed once a day, so an order can go out up to a day late
   watchBand: 1.4, // "watch" while stock is less than 40% above the reorder point
   defaultLead: 3, // days
 };
@@ -117,30 +140,42 @@ export const IQ_PARAMS = {
 const mean = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
 export const leadOf = (p) => (p.lead > 0 ? p.lead : IQ_PARAMS.defaultLead);
 
-// Planning demand (units/day): average of recent logged sales, blended with the
-// typed estimate until there are minHistory days of history.
-export function planDemand(p) {
+// Usable demand observations: recent days not censored by a stockout.
+export function usableDays(p) {
   const h = Array.isArray(p.history) ? p.history : [];
-  const typed = Math.max(0, Number(p.demand) || 0);
-  if (!h.length) return typed;
-  const w = typed ? Math.min(1, h.length / IQ_PARAMS.minHistory) : 1;
-  return w * mean(h.slice(-IQ_PARAMS.window)) + (1 - w) * typed;
+  const c = Array.isArray(p.histCens) ? p.histCens : [];
+  const from = Math.max(0, h.length - IQ_PARAMS.window);
+  return h.slice(from).filter((_, i) => !c[from + i]);
+}
+// Planning demand (units/day): average of usable recent days, blended with the typed
+// estimate in proportion to how many usable days there are (full weight at minHistory).
+export function planDemand(p) {
+  const typed = num(p.demand);
+  const obs = usableDays(p);
+  if (!obs.length) return typed || mean((p.history || []).slice(-IQ_PARAMS.window)); // censored sales: lower bound
+  const w = typed ? Math.min(1, obs.length / IQ_PARAMS.minHistory) : 1;
+  return w * mean(obs) + (1 - w) * typed;
 }
 const dOf = (p) => (typeof p.planDemand === 'number' ? p.planDemand : planDemand(p));
 
-// σ of daily demand; cvFallback on short history, never below √mean.
+// σ of daily demand from usable days; cvFallback on short history; never below √mean.
 export function demandSigma(p, d) {
-  const h = Array.isArray(p.history) ? p.history.slice(-IQ_PARAMS.window) : [];
-  if (h.length < IQ_PARAMS.minHistory) return IQ_PARAMS.cvFallback * d;
-  const m = mean(h);
-  const sd = Math.sqrt(h.reduce((s, x) => s + (x - m) ** 2, 0) / (h.length - 1));
+  const h = usableDays(p);
+  let sd = IQ_PARAMS.cvFallback * d;
+  if (h.length >= IQ_PARAMS.minHistory) {
+    const m = mean(h);
+    sd = Math.sqrt(h.reduce((s, x) => s + (x - m) ** 2, 0) / (h.length - 1));
+  }
   return Math.max(sd, Math.sqrt(d));
 }
-// Safety stock = z × σ × √L ; ROP = d × L + safety stock.
-export const safetyStock = (sigma, lead, cls) => (IQ_PARAMS.z[cls] || IQ_PARAMS.z.C) * sigma * Math.sqrt(lead);
-export const reorderPoint = (d, sigma, lead, cls) => Math.max(1, Math.ceil(d * lead + safetyStock(sigma, lead, cls)));
-// EOQ = √(2·D·S / H): D = annual demand (units/yr), S = ₹/order, H = ₹ to hold one unit a year.
+// Protection period T = lead time + 1-day review. SS = z·σ·√T ; ROP = d·T + SS. No demand → 0.
+export const safetyStock = (sigma, lead, cls) =>
+  (IQ_PARAMS.z[cls] || IQ_PARAMS.z.C) * sigma * Math.sqrt(lead + IQ_PARAMS.reviewDays);
+export const reorderPoint = (d, sigma, lead, cls) =>
+  d > 0 ? Math.ceil(d * (lead + IQ_PARAMS.reviewDays) + safetyStock(sigma, lead, cls)) : 0;
+// EOQ = √(2·D·S / H): D = annual demand (units/yr), S = ₹/order, H = ₹ to hold one unit a year. No demand → 0.
 export function eoqOf(d, cost) {
+  if (!(d > 0)) return 0;
   const H = Math.max(0.1, IQ_PARAMS.holdRate * (cost || 0));
   return Math.max(1, Math.ceil(Math.sqrt((2 * d * 365 * IQ_PARAMS.orderCost) / H)));
 }
@@ -148,7 +183,7 @@ export function eoqOf(d, cost) {
 // Recompute planning demand, Pareto ABC (needs the whole catalog), safety stock,
 // ROP, EOQ, max and status. Mutates and returns ps.
 export function recomputeAll(ps) {
-  ps.forEach((p) => { p.planDemand = Math.round(planDemand(p) * 10) / 10; });
+  ps.forEach((p) => { p.planDemand = Math.round(planDemand(p) * 100) / 100; });
   const val = (p) => p.planDemand * 365 * (p.sell || 0);
   const total = ps.reduce((s, p) => s + val(p), 0);
   let cum = 0;
@@ -200,7 +235,7 @@ export const daysOfCover = (p) => (p.stock || 0) / Math.max(0.01, dOf(p));
 export const lostUnits = (p) => Math.max(0, dOf(p) * leadOf(p) - (p.stock || 0));
 export const revenueAtRisk = (p) => Math.round(lostUnits(p) * (p.sell || 0));
 export function computeStatus(p) {
-  if (!p) return 'good';
+  if (!p || !(dOf(p) > 0)) return 'good'; // no demand (or none known yet): nothing to reorder
   if (!(p.stock > 0) || lostUnits(p) > 0) return 'critical'; // runs out before a new order could arrive
   if (p.stock <= p.rop) return 'order';
   if (p.stock <= p.rop * IQ_PARAMS.watchBand) return 'watch';
@@ -219,39 +254,29 @@ export async function loadSalesLog() {
   }
 }
 
+// One sales save. Products not entered get a confirmed zero-sale day (the owner logged
+// that day); selling out or an empty shelf marks the day censored. Same as iqRecordDay.
+// ponytail: assumes the owner enters every product sold that day.
 export async function recordSales(qtyMap) {
-  // qtyMap = { [productId]: unitsSold }
   const products = await loadProducts();
-  let totalUnits = 0,
-    totalRevenue = 0,
-    totalProfit = 0;
   const lines = [];
   const today = localDay();
   const updated = products.map((p) => {
-    const q = qtyMap[p.id] || 0;
-    if (q <= 0) return p;
-    const sold = Math.min(q, p.stock);
-    totalUnits += sold;
-    totalRevenue += sold * p.sell;
-    totalProfit += sold * (p.sell - p.cost);
-    lines.push({
-      id: p.id,
-      name: p.name,
-      qty: sold,
-      revenue: sold * p.sell,
-      profit: sold * (p.sell - p.cost),
-    });
-    return { ...p, stock: Math.max(0, p.stock - sold), ...logDailySale(p, sold, today) };
+    const sold = Math.min(num(qtyMap[p.id]), p.stock || 0);
+    const stock = (p.stock || 0) - sold;
+    if (sold > 0) lines.push({ id: p.id, name: p.name, qty: sold, revenue: sold * p.sell, profit: sold * (p.sell - p.cost) });
+    return { ...p, stock, ...logDailySale(p, sold, today, stock <= 0) };
   });
-  await saveProducts(updated); // logged sales feed planning demand → ROP/EOQ/ABC
-  if (lines.length === 0) return null;
-
+  if (!lines.length) return null;
+  if (!(await saveProducts(updated))) return null; // logged sales feed planning demand → ROP/EOQ/ABC
+  const sum = (k) => lines.reduce((s, l) => s + l[k], 0);
   const entry = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), // unique sale event id for sync
     date: new Date().toISOString(),
     items: lines.length,
-    totalUnits,
-    totalRevenue,
-    totalProfit,
+    totalUnits: sum('qty'),
+    totalRevenue: sum('revenue'),
+    totalProfit: sum('profit'),
     lines,
   };
   const log = await loadSalesLog();
@@ -261,17 +286,24 @@ export async function recordSales(qtyMap) {
   return entry;
 }
 
-// history[] feeds the forecast as units per DAY, so a second save on the same
-// day adds to today's bucket instead of looking like a new day.
-// ponytail: unlogged days are skipped, not zero-filled — a forgotten entry shouldn't read as zero demand.
+// history[] = units per DAY (second save the same day adds to today's bucket);
+// histCens[i] = 1 marks a sold-out / empty-shelf day, which demand math skips.
+// ponytail: days with no save at all are skipped, not zero-filled.
 export function localDay(d = new Date()) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const pad = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 }
-export function logDailySale(p, qty, today) {
+export function logDailySale(p, qty, today, censored = false) {
   const history = Array.isArray(p.history) ? [...p.history] : [];
-  if (p.histDay === today && history.length) history[history.length - 1] += qty;
-  else history.push(qty);
-  return { history: history.slice(-60), histDay: today };
+  const cens = Array.isArray(p.histCens) && p.histCens.length === history.length ? [...p.histCens] : history.map(() => 0);
+  if (p.histDay === today && history.length) {
+    history[history.length - 1] += qty;
+    if (censored) cens[cens.length - 1] = 1;
+  } else {
+    history.push(qty);
+    cens.push(censored ? 1 : 0);
+  }
+  return { history: history.slice(-60), histCens: cens.slice(-60), histDay: today };
 }
 
 // ============================================================
@@ -280,14 +312,14 @@ export function logDailySale(p, qty, today) {
 export function needsAction(p) {
   return p.status !== 'good' && p.stock + (p.incoming || 0) <= p.rop * IQ_PARAMS.watchBand;
 }
-export const shouldOrder = (p) => p.stock + (p.incoming || 0) <= p.rop;
-// How much to order: back up to ROP + EOQ from the current position, never less than one EOQ.
+export const shouldOrder = (p) => p.rop > 0 && (p.stock || 0) + (p.incoming || 0) <= p.rop;
+// How much to order: nothing while the position is above the reorder point; otherwise back up to ROP + EOQ.
 export const orderQty = (p) =>
-  Math.max(p.eoq || 1, Math.ceil((p.rop || 0) + (p.eoq || 0) - p.stock - (p.incoming || 0)));
+  shouldOrder(p) && p.eoq > 0 ? Math.ceil(p.rop + p.eoq - (p.stock || 0) - (p.incoming || 0)) : 0;
 
 export async function markOrdered(id) {
   const p = (await loadProducts()).find((x) => x.id === id);
-  if (!p) return null;
+  if (!p || !orderQty(p)) return null; // enough already on order
   return updateProduct(id, { incoming: (p.incoming || 0) + orderQty(p) });
 }
 

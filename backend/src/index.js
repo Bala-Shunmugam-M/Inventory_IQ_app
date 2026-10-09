@@ -21,6 +21,7 @@ const MAX_AI_BODY = 64 * 1024;
 const MAX_SNAPSHOT_BODY = 1024 * 1024;
 const MAX_PRODUCTS = 5000;
 const STORE_ID_RE = /^IQ-[A-Z2-7]{10}$/;
+const AI_DAILY_CAP = 300; // total AI calls per UTC day across all users; override with the AI_DAILY_CAP env var
 
 // Browser origins allowed to call the AI route. Add http://localhost:<port> for local dev.
 // ponytail: Origin is enforced by browsers only — curl can fake it. The LIMITER binding caps the rest.
@@ -65,6 +66,33 @@ export function sanitizeBody(body) {
   };
 }
 
+// Read at most `max` bytes, rejecting early on Content-Length and cancelling the stream
+// past the cap, so an oversized body is never buffered whole. Returns null when too large.
+async function readBody(request, max) {
+  if (Number(request.headers.get('Content-Length')) > max) return null;
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const buf = new Uint8Array(size);
+  let off = 0;
+  for (const c of chunks) {
+    buf.set(c, off);
+    off += c.byteLength;
+  }
+  return new TextDecoder().decode(buf);
+}
+
 async function limited(env, request, prefix) {
   if (!env.LIMITER) return false;
   const ip = request.headers.get('CF-Connecting-IP') || 'anon';
@@ -79,11 +107,14 @@ async function handleAi(request, env) {
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405, cors);
   if (!ALLOWED_ORIGINS.includes(origin)) return json({ error: 'Origin not allowed' }, 403, cors);
   if (!env.GROQ_API_KEY) return json({ error: 'Server not configured: GROQ_API_KEY secret missing' }, 500, cors);
+  // This route spends money: fail closed without its abuse controls. Origin checks only stop
+  // browsers, so the per-IP limiter and the global daily cap below are what bound the bill.
+  if (!env.LIMITER || !env.DB) return json({ error: 'Server not configured: LIMITER and DB bindings are required for AI' }, 503, cors);
   // Same key format as the old proxy so the deployed pages keep their per-IP budget.
   if (await limited(env, request, '')) return json({ error: 'Too many requests — try again in a minute' }, 429, cors);
 
-  const raw = await request.text();
-  if (raw.length > MAX_AI_BODY) return json({ error: 'Request too large' }, 413, cors);
+  const raw = await readBody(request, MAX_AI_BODY);
+  if (raw === null) return json({ error: 'Request too large' }, 413, cors);
   let body;
   try {
     body = sanitizeBody(JSON.parse(raw));
@@ -91,6 +122,14 @@ async function handleAi(request, env) {
     body = null;
   }
   if (!body) return json({ error: 'Invalid request body' }, 400, cors);
+
+  const cap = Number(env.AI_DAILY_CAP) || AI_DAILY_CAP;
+  const used = await env.DB.prepare(
+    'INSERT INTO ai_usage (day, calls) VALUES (?, 1) ON CONFLICT(day) DO UPDATE SET calls = calls + 1 RETURNING calls'
+  )
+    .bind(new Date().toISOString().slice(0, 10))
+    .first();
+  if (used.calls > cap) return json({ error: 'Daily AI limit reached — try again tomorrow' }, 429, cors);
 
   let upstream;
   try {
@@ -161,9 +200,26 @@ async function getSnapshot(row) {
   );
 }
 
+// Shape checks for one product; returns an error string or null. Clients clean data on load
+// too, but the server must not store numbers-as-strings, negatives or duplicate ids.
+const NUM_FIELDS = ['stock', 'incoming', 'cost', 'sell', 'demand', 'lead', 'max', 'rop', 'eoq'];
+const STR_FIELDS = ['name', 'ico', 'supplier', 'phone', 'cls', 'clsManual', 'histDay'];
+const okNum = (x) => typeof x === 'number' && Number.isFinite(x) && x >= 0;
+function productError(p, seen) {
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return 'must be an object';
+  if (typeof p.id !== 'number' || !Number.isFinite(p.id)) return 'needs a finite numeric id';
+  if (seen.has(p.id)) return `duplicate id ${p.id}`;
+  seen.add(p.id);
+  for (const k of NUM_FIELDS) if (k in p && !okNum(p[k])) return `${k} must be a finite number >= 0`;
+  for (const k of STR_FIELDS) if (p[k] != null && (typeof p[k] !== 'string' || p[k].length > 200)) return `${k} must be a string (max 200)`;
+  for (const k of ['history', 'histCens'])
+    if (k in p && !(Array.isArray(p[k]) && p[k].length <= 400 && p[k].every(okNum))) return `${k} must be up to 400 numbers >= 0`;
+  return null;
+}
+
 async function putSnapshot(request, env, row) {
-  const raw = await request.text();
-  if (new TextEncoder().encode(raw).length > MAX_SNAPSHOT_BODY) return json({ error: 'Snapshot too large (max 1 MB)' }, 413, OPEN_CORS);
+  const raw = await readBody(request, MAX_SNAPSHOT_BODY);
+  if (raw === null) return json({ error: 'Snapshot too large (max 1 MB)' }, 413, OPEN_CORS);
   let body;
   try {
     body = JSON.parse(raw);
@@ -176,10 +232,15 @@ async function putSnapshot(request, env, row) {
   const { products } = body;
   if (!Array.isArray(products)) return bad('products must be an array');
   if (products.length > MAX_PRODUCTS) return bad(`At most ${MAX_PRODUCTS} products`);
-  if (!products.every((p) => p && typeof p === 'object' && !Array.isArray(p) && typeof p.id === 'number' && Number.isFinite(p.id)))
-    return bad('Every product must be an object with a finite numeric id');
+  const seen = new Set();
+  for (let i = 0; i < products.length; i++) {
+    const err = productError(products[i], seen);
+    if (err) return bad(`products[${i}]: ${err}`);
+  }
   const sales = body.sales ?? [];
-  if (!Array.isArray(sales)) return bad('sales must be an array or null');
+  if (!Array.isArray(sales) || sales.length > 5000) return bad('sales must be an array (max 5000) or null');
+  if (!sales.every((e) => e && typeof e === 'object' && !Array.isArray(e) && (e.date == null || typeof e.date === 'string')))
+    return bad('Every sale must be an object with a string date');
 
   const now = new Date().toISOString();
   // The version check lives in the WHERE clause, so two concurrent PUTs can't both win.
@@ -206,6 +267,8 @@ async function handleStores(request, env, path) {
   const m = path.match(/^\/api\/stores\/([^/]+)\/snapshot$/);
   if (!m) return json({ error: 'Not found' }, 404, OPEN_CORS);
   if (request.method !== 'GET' && request.method !== 'PUT') return json({ error: 'Method not allowed' }, 405, OPEN_CORS);
+  // Limit before hashing the token or touching D1, so guessing costs the attacker, not us.
+  if (await limited(env, request, 'snap:')) return json({ error: 'Too many requests — try again in a minute' }, 429, OPEN_CORS);
   const row = await authStore(request, env, m[1]);
   if (!row) return json({ error: 'Unauthorized' }, 401, OPEN_CORS);
   return request.method === 'GET' ? getSnapshot(row) : putSnapshot(request, env, row);

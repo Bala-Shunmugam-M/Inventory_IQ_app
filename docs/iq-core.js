@@ -44,17 +44,32 @@ function iqSafeTip(s) {
   return String(s == null ? '' : s).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/&lt;(\/?)strong&gt;/g, '<$1strong>');
 }
 var IQ_NUM = ['stock', 'max', 'rop', 'eoq', 'demand', 'cost', 'sell', 'lead', 'incoming'];
+function iqNum(x) { var n = Number(x); return isFinite(n) && n > 0 ? n : 0; } // finite and >= 0, else 0
+// For values placed inside a quoted HTML attribute (e.g. data-*). Scrubbing alone doesn't cover that context.
+function iqAttr(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+}
+// LLM output is untrusted: strip markup from every string and force the numeric fields to numbers.
+function iqAiClean(d) {
+  d = iqScrub(d) || {};
+  var num = function (x) { var n = Number(x); return x != null && x !== '' && isFinite(n) ? n : null; };
+  (Array.isArray(d.at_risk_skus) ? d.at_risk_skus : (d.at_risk_skus = [])).forEach(function (s) { s.days_cover = num(s.days_cover); s.confidence = num(s.confidence); });
+  (Array.isArray(d.recommendations) ? d.recommendations : (d.recommendations = [])).forEach(function (r) { var n = num(r.priority); r.priority = n == null ? null : Math.max(1, Math.min(9, Math.round(n))); });
+  return d;
+}
+function iqUid() { var a = new Uint32Array(2); crypto.getRandomValues(a); return a[0].toString(36) + a[1].toString(36); }
 function iqClean(arr) {
   if (!Array.isArray(arr)) return [];
   var seen = {};
   return arr.filter(function (p) { return p && typeof p === 'object'; }).map(function (p) {
     var tips = Array.isArray(p.tips) ? p.tips : null;
     var c = iqScrub(p);
-    IQ_NUM.forEach(function (k) { if (k in c) c[k] = Number(c[k]) || 0; });
+    IQ_NUM.forEach(function (k) { if (k in c) c[k] = iqNum(c[k]); });
     c.id = Number(c.id); // ids are spliced into onclick="...(id)" handlers
     if (!isFinite(c.id) || seen[c.id]) c.id = Date.now() + Math.floor(Math.random() * 1e6);
     seen[c.id] = 1;
-    c.history = Array.isArray(c.history) ? c.history.map(function (x) { return Number(x) || 0; }) : [];
+    c.history = Array.isArray(c.history) ? c.history.map(iqNum) : [];
+    c.histCens = c.history.map(function (x, i) { return Array.isArray(p.histCens) && p.histCens[i] ? 1 : 0; });
     if (tips) c.tips = tips.map(function (t) { var s = iqScrub(t) || {}; s.body = iqSafeTip(t && t.body); return s; });
     return c;
   });
@@ -69,9 +84,10 @@ var IQ_PARAMS = {
   holdRate: 0.20,       // holding cost per year as a fraction of unit cost → H = holdRate × cost (₹/unit/year)
   z: { A: 1.65, B: 1.28, C: 1.04 }, // safety factor: 95% / 90% / 85% chance an order cycle has no stockout
   cvFallback: 0.30,     // until there are minHistory days of sales, assume daily demand varies ±30% (σ = 0.3 × mean)
-  minHistory: 7,        // logged days before sales fully replace the typed daily demand
+  minHistory: 7,        // usable logged days before sales fully replace the typed daily demand
   window: 14,           // most recent logged days used for the planning demand and its variability
   abcCut: [0.80, 0.95], // ABC: products making the first 80% of annual revenue are A, the next 15% B, the rest C
+  reviewDays: 1,        // R: stock is reviewed once a day, so an order can go out up to a day late
   watchBand: 1.4,       // "watch" while stock is less than 40% above the reorder point
   defaultLead: 3        // days, when a product has no lead time
 };
@@ -80,33 +96,51 @@ var IQ_HEALTH_W = [30, 25, 20, 15, 10]; // health weights: stockout, excess, for
 function iqMean(a) { return a.length ? a.reduce(function (s, x) { return s + x; }, 0) / a.length : 0; }
 function iqLead(p) { return p.lead > 0 ? p.lead : IQ_PARAMS.defaultLead; }
 
-// Planning demand (units/day): average of recent logged sales, blended with the
-// typed estimate until there are minHistory days of history.
-// ponytail: days the shelf was empty can't be logged, so demand during stockouts is under-counted.
+// Usable demand observations: recent logged days that were NOT censored by a stockout
+// (a day the product sold out or had no stock only shows how much stock there was).
+function iqObs(p) {
+  var h = Array.isArray(p.history) ? p.history : [], c = Array.isArray(p.histCens) ? p.histCens : [];
+  var n = h.length, from = Math.max(0, n - IQ_PARAMS.window), out = [];
+  for (var i = from; i < n; i++) if (!c[i]) out.push(h[i]);
+  return out;
+}
+// Planning demand (units/day): average of usable recent days, blended with the typed
+// estimate in proportion to how many usable days there are (full weight at minHistory).
 function iqDemand(p) {
-  var h = Array.isArray(p.history) ? p.history : [], typed = Math.max(0, Number(p.demand) || 0);
-  if (!h.length) return typed;
-  var w = typed ? Math.min(1, h.length / IQ_PARAMS.minHistory) : 1;
-  return w * iqMean(h.slice(-IQ_PARAMS.window)) + (1 - w) * typed;
+  var typed = iqNum(p.demand), obs = iqObs(p);
+  if (!obs.length) { // nothing usable: keep the estimate; if there is none, censored sales are a lower bound
+    var h = Array.isArray(p.history) ? p.history.slice(-IQ_PARAMS.window) : [];
+    return typed || iqMean(h);
+  }
+  var w = typed ? Math.min(1, obs.length / IQ_PARAMS.minHistory) : 1;
+  return w * iqMean(obs) + (1 - w) * typed;
 }
 // Planning demand of a product already run through iqRecompute (falls back to computing it).
 function iqD(p) { return typeof p.planDemand === 'number' ? p.planDemand : iqDemand(p); }
 
-// σ of daily demand. Short history → assume cvFallback. Never below √mean (the
-// randomness of individual customers), so a few identical days can't zero the safety stock.
+// σ of daily demand from usable days; with fewer than minHistory assume cvFallback.
+// Either way never below √mean (Poisson-like randomness of individual customers — an
+// assumption), so a few identical days can't zero the safety stock.
 function iqSigma(p, d) {
-  var h = Array.isArray(p.history) ? p.history.slice(-IQ_PARAMS.window) : [];
-  if (h.length < IQ_PARAMS.minHistory) return IQ_PARAMS.cvFallback * d;
-  var m = iqMean(h);
-  var sd = Math.sqrt(h.reduce(function (s, x) { return s + (x - m) * (x - m); }, 0) / (h.length - 1));
+  var h = iqObs(p), sd;
+  if (h.length < IQ_PARAMS.minHistory) sd = IQ_PARAMS.cvFallback * d;
+  else {
+    var m = iqMean(h);
+    sd = Math.sqrt(h.reduce(function (s, x) { return s + (x - m) * (x - m); }, 0) / (h.length - 1));
+  }
   return Math.max(sd, Math.sqrt(d));
 }
-// Safety stock = z × σ × √L ; reorder point = demand during the lead time + safety stock.
+// Daily review: an order covers the lead time plus the review period, T = L + R.
+// Safety stock = z × σ × √T ; reorder point = demand over T + safety stock.
+// z sets a target chance that an order cycle has no stockout under a normal
+// approximation — a model assumption, not a measured service level.
 // ponytail: lead time treated as fixed — add lead-time variance once deliveries are logged.
-function iqSafetyStock(sigma, lead, cls) { return (IQ_PARAMS.z[cls] || IQ_PARAMS.z.C) * sigma * Math.sqrt(lead); }
-function iqROP(d, sigma, lead, cls) { return Math.max(1, Math.ceil(d * lead + iqSafetyStock(sigma, lead, cls))); }
+function iqSafetyStock(sigma, lead, cls) { return (IQ_PARAMS.z[cls] || IQ_PARAMS.z.C) * sigma * Math.sqrt(lead + IQ_PARAMS.reviewDays); }
+function iqROP(d, sigma, lead, cls) { return d > 0 ? Math.ceil(d * (lead + IQ_PARAMS.reviewDays) + iqSafetyStock(sigma, lead, cls)) : 0; }
 // EOQ = √(2·D·S / H) with D = annual demand (units/year), S = ₹ per order, H = ₹ to hold one unit for a year.
+// No demand → no order.
 function iqEOQ(d, cost) {
+  if (!(d > 0)) return 0;
   var H = Math.max(0.1, IQ_PARAMS.holdRate * (cost || 0));
   return Math.max(1, Math.ceil(Math.sqrt(2 * d * 365 * IQ_PARAMS.orderCost / H)));
 }
@@ -115,7 +149,7 @@ function iqEOQ(d, cost) {
 // class (Pareto needs all products), safety stock, ROP, EOQ, max and status.
 // Run after load, sales, receiving and any add/edit/delete. Mutates and returns ps.
 function iqRecompute(ps) {
-  ps.forEach(function (p) { p.planDemand = Math.round(iqDemand(p) * 10) / 10; });
+  ps.forEach(function (p) { p.planDemand = Math.round(iqDemand(p) * 100) / 100; }); // 2 dp keeps slow movers (0.04/day) non-zero
   var val = function (p) { return p.planDemand * 365 * (p.sell || 0); };
   var total = ps.reduce(function (s, p) { return s + val(p); }, 0), cum = 0;
   ps.slice().sort(function (a, b) { return val(b) - val(a); }).forEach(function (p) {
@@ -140,6 +174,7 @@ function iqCover(p) { return (p.stock || 0) / Math.max(0.01, iqD(p)); } // days 
 function iqLostUnits(p) { return Math.max(0, iqD(p) * iqLead(p) - (p.stock || 0)); }
 function iqRevAtRisk(p) { return Math.round(iqLostUnits(p) * (p.sell || 0)); }
 function iqStatus(p) {
+  if (!(iqD(p) > 0)) return 'good'; // no demand (or none known yet): nothing to reorder
   if (!(p.stock > 0) || iqLostUnits(p) > 0) return 'critical'; // runs out before a new order could arrive
   if (p.stock <= p.rop) return 'order';
   if (p.stock <= p.rop * IQ_PARAMS.watchBand) return 'watch';
@@ -152,9 +187,13 @@ function iqStatus(p) {
 function iqNeedsAction(p) {
   return p.status !== 'good' && p.stock + (p.incoming || 0) <= p.rop * IQ_PARAMS.watchBand;
 }
-function iqShouldOrder(p) { return p.stock + (p.incoming || 0) <= p.rop; }
-// How much to order: enough to bring the position back up to ROP + EOQ, never less than one EOQ.
-function iqOrderQty(p) { return Math.max(p.eoq || 1, Math.ceil((p.rop || 0) + (p.eoq || 0) - p.stock - (p.incoming || 0))); }
+function iqShouldOrder(p) { return p.rop > 0 && (p.stock || 0) + (p.incoming || 0) <= p.rop; }
+// How much to order: nothing while the position is above the reorder point; otherwise
+// enough to bring it back up to ROP + EOQ (which is at least one EOQ).
+function iqOrderQty(p) {
+  var ip = (p.stock || 0) + (p.incoming || 0);
+  return iqShouldOrder(p) && p.eoq > 0 ? Math.ceil((p.rop || 0) + p.eoq - ip) : 0;
+}
 function iqReceive(p) {
   p.stock += p.incoming || 0;
   p.incoming = 0;
@@ -162,20 +201,41 @@ function iqReceive(p) {
 }
 
 /* ── Sales history: one bucket per calendar day ──
-   history[] feeds the forecast as "units per day", so a second save on the
-   same day must add to today's bucket, not create a new "day". */
+   history[] feeds demand as "units per day", so a second save on the same day adds
+   to today's bucket. histCens[i] = 1 marks a day the product sold out or had no
+   stock: that day only shows a lower bound on demand, so demand math skips it. */
 function iqToday(d) { // local calendar day, YYYY-MM-DD (today unless a Date is given)
   d = d || new Date();
   return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
 }
-function iqLogSale(p, q, today) {
+function iqLogSale(p, q, today, censored) {
   today = today || iqToday();
   if (!Array.isArray(p.history)) p.history = [];
-  // ponytail: days with no logged sales are skipped, not zero-filled — a forgotten entry shouldn't read as zero demand.
-  if (p.histDay === today && p.history.length) p.history[p.history.length - 1] += q;
-  else p.history.push(q);
+  if (!Array.isArray(p.histCens) || p.histCens.length !== p.history.length) p.histCens = p.history.map(function () { return 0; });
+  // ponytail: days with no save at all are skipped, not zero-filled — a forgotten day shouldn't read as zero demand.
+  if (p.histDay === today && p.history.length) {
+    p.history[p.history.length - 1] += q;
+    if (censored) p.histCens[p.histCens.length - 1] = 1;
+  } else {
+    p.history.push(q);
+    p.histCens.push(censored ? 1 : 0);
+  }
   p.histDay = today;
-  if (p.history.length > 60) p.history = p.history.slice(-60);
+  if (p.history.length > 60) { p.history = p.history.slice(-60); p.histCens = p.histCens.slice(-60); }
+}
+// One sales save. qty = { id: units }. Products not entered get a confirmed zero-sale
+// day (the owner logged that day); selling out or an empty shelf marks the day censored.
+// ponytail: assumes the owner enters every product sold that day.
+// Mutates stock/history and returns the sale lines.
+function iqRecordDay(ps, qty, today) {
+  var lines = [];
+  ps.forEach(function (p) {
+    var start = p.stock || 0, q = Math.min(iqNum(qty[p.id]), start);
+    p.stock = start - q;
+    iqLogSale(p, q, today, p.stock <= 0);
+    if (q > 0) lines.push({ id: p.id, name: p.name, qty: q, revenue: q * (p.sell || 0), profit: q * ((p.sell || 0) - (p.cost || 0)) });
+  });
+  return lines;
 }
 
 /* ── Forecast: linear trend blended with 7-day moving average ── */
@@ -216,7 +276,7 @@ function iqForecast(p) {
   var pct = ma7 > 0 ? Math.round(reg.slope * 7 / ma7 * 100) : 0;
   return {
     forecast: Math.max(0, Math.round(iqFcNext(h))),
-    ci: Math.round(1.645 * (k >= 3 ? Math.sqrt(sq / k) : iqSigma(p, d))), // 90% band from backtest errors
+    ci: Math.round(1.645 * (k >= 3 ? Math.sqrt(sq / k) : iqSigma(p, d))), // typical error band (heuristic, not a calibrated 90% interval)
     trend: pct >= 5 ? 'up' : pct <= -5 ? 'down' : 'flat',
     trendPct: Math.abs(pct),
     acc: k >= 3 && act > 0 ? Math.max(0, Math.round((1 - err / act) * 100)) : null,
@@ -232,10 +292,10 @@ function iqForecast(p) {
    excess    — share of stock value that is NOT above max (ROP + EOQ)
    forecast  — backtest accuracy, weighted by demand (70 when no product has 7 days of sales)
    supplier  — shorter lead times score higher (delivery history isn't tracked yet)
-   service   — expected fill: share of lead-time demand the stock on hand can serve */
+   service   — coverage: Σ min(stock, lead-time demand) ÷ Σ lead-time demand (same as iqSimulate) */
 function iqHealth(ps) {
   if (!ps || !ps.length) return null;
-  var inv = 0, cogs = 0, exc = 0, rar = 0, so = [0, 0], fc = [0, 0], sup = [0, 0], svc = [0, 0];
+  var inv = 0, cogs = 0, exc = 0, rar = 0, so = [0, 0], fc = [0, 0], sup = [0, 0], fill = 0, need = 0;
   var risks = [], opps = [], plan = [], revItems = [], dist = { high: 0, med: 0, low: 0 };
   ps.forEach(function (p) {
     var d = Math.max(0.01, iqD(p)), L = iqLead(p), stock = p.stock || 0, cost = p.cost || 0, sell = p.sell || 0;
@@ -243,7 +303,7 @@ function iqHealth(ps) {
     var exVal = Math.max(0, stock - (p.rop || 0) - (p.eoq || 0)) * cost;
     inv += stock * cost; cogs += d * 365 * cost; exc += exVal; rar += r;
     so[0] += Math.min(100, cover / (L * 1.5) * 100) * rev; so[1] += rev;
-    svc[0] += Math.min(100, stock / (d * L) * 100) * d; svc[1] += d;
+    if (iqD(p) > 0) { fill += Math.min(stock, iqD(p) * L); need += iqD(p) * L; }
     if (acc != null) { fc[0] += acc * d; fc[1] += d; }
     sup[0] += Math.max(0, Math.min(100, (1 - (L - 1) / 13) * 100)) * d; sup[1] += d;
     var st = iqStatus(p), lvl = st === 'critical' ? 'high' : st === 'order' ? 'med' : 'low', c = Math.round(cover * 10) / 10;
@@ -256,7 +316,7 @@ function iqHealth(ps) {
   var avg = function (a, dflt) { return a[1] ? a[0] / a[1] : dflt; };
   var forecastAcc = fc[1] ? Math.round(fc[0] / fc[1]) : null;
   var sub = [['Stockout', avg(so, 100)], ['Excess', 100 - Math.min(100, inv > 0 ? exc / inv * 100 : 0)],
-    ['Forecast', forecastAcc != null ? forecastAcc : 70], ['Supplier', avg(sup, 80)], ['Service', avg(svc, 100)]]
+    ['Forecast', forecastAcc != null ? forecastAcc : 70], ['Supplier', avg(sup, 80)], ['Service', need > 0 ? fill / need * 100 : 100]]
     .map(function (s) { return [s[0], Math.round(s[1])]; });
   var health = Math.max(0, Math.min(100, Math.round(sub.reduce(function (a, s, i) { return a + IQ_HEALTH_W[i] * s[1]; }, 0) / 100)));
   var turnover = inv > 0 ? cogs / inv : 0;
@@ -295,6 +355,7 @@ function iqSimulate(ps, dPct, lDelta) {
   var f = 1 + dPct / 100, stockouts = 0, capital = 0, fill = 0, need = 0, ssBase = 0, ssNew = 0, rows = [];
   ps.forEach(function (p) {
     var d = iqD(p), sigma = iqSigma(p, d), L = iqLead(p), nl = Math.max(1, L + lDelta), cost = p.cost || 0, stock = p.stock || 0;
+    if (!(d > 0)) return; // no demand: nothing to cover
     var leadDemand = d * f * nl, newRop = iqROP(d * f, sigma * f, nl, p.cls), out = stock < leadDemand, extra = Math.max(0, newRop - stock) * cost;
     if (out) stockouts++;
     capital += extra; fill += Math.min(stock, leadDemand); need += leadDemand;
@@ -320,15 +381,24 @@ function iqFeatures() {
 }
 
 /* ── Cloud sync (backend/: Cloudflare Worker + D1) ──
-   A store is { storeId, token } from POST /api/stores, saved in localStorage
-   'iq_store' with the last synced version. Other devices join with the link
-   code iq1:<storeId>:<token> — it works like a password. Both functions
-   resolve to { mode: 'cloud' | 'local', ... }; 'local' = cloud not configured. */
+   A store is { storeId, token } from POST /api/stores, kept in localStorage
+   'iq_store'. Other devices join with the link code iq1:<storeId>:<token> — it
+   works like a password. 'iq_sync_base' holds the last synced snapshot and its
+   version; each tab keeps the copy it loaded (IQ_BASE), so a stale tab can't
+   borrow a newer tab's version and skip the conflict check. On 409 we do a
+   three-way merge against that base. Both functions resolve to
+   { mode: 'cloud' | 'local', ... }; 'local' = cloud not configured. */
 function iqStore(s) {
   if (s) localStorage.setItem('iq_store', JSON.stringify(s));
   try { return JSON.parse(localStorage.getItem('iq_store') || 'null'); } catch (e) { return null; }
 }
 function iqLinkCode() { var s = iqStore(); return s ? 'iq1:' + s.storeId + ':' + s.token : null; }
+function iqLoadBase() { try { return JSON.parse(localStorage.getItem('iq_sync_base') || 'null'); } catch (e) { return null; } }
+var IQ_BASE = typeof localStorage !== 'undefined' ? iqLoadBase() : null;
+function iqSetBase(version, products, sales) {
+  IQ_BASE = { version: version, products: products, sales: sales };
+  localStorage.setItem('iq_sync_base', JSON.stringify(IQ_BASE));
+}
 function iqApi(method, path, token, body) {
   var h = { 'Content-Type': 'application/json' };
   if (token) h.Authorization = 'Bearer ' + token;
@@ -337,47 +407,103 @@ function iqApi(method, path, token, body) {
 }
 function iqFail(r) { throw new Error(r.status === 401 ? 'Link code not recognised' : (r.data.error || 'Server ' + r.status)); }
 
-// Union by product id (this device wins on clashes) and by sale timestamp.
-// ponytail: whole-product last-writer-wins; field-level merge if two devices edit the same product often.
-function iqMerge(local, remote) {
-  var byId = {}, order = [];
-  remote.products.concat(local.products).forEach(function (p) { if (!(p.id in byId)) order.push(p.id); byId[p.id] = p; });
-  var seen = {};
-  var sales = remote.sales.concat(local.sales)
-    .filter(function (e) { if (!e || seen[e.date]) return false; seen[e.date] = 1; return true; })
+var IQ_COUNTERS = ['stock', 'incoming'];
+var IQ_HIST = ['history', 'histCens', 'histDay'];
+function iqSame(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+// Fields iqRecompute derives — never evidence that someone edited a product.
+var IQ_DERIVED = { status: 1, planDemand: 1, ss: 1, rop: 1, eoq: 1, max: 1, cls: 1 };
+function iqSameProduct(a, b) {
+  var strip = function (p) { var o = {}; Object.keys(p).sort().forEach(function (k) { if (!IQ_DERIVED[k]) o[k] = p[k]; }); return o; };
+  return iqSame(strip(a), strip(b));
+}
+// Three-way merge of product lists against the last synced base.
+// - unchanged on one side → take the other side (covers adds, edits and deletes)
+// - deleted on one side, edited on the other → keep the edit (never lose work)
+// - edited on both → stock/incoming combine both sides' changes (base + Δlocal + Δremote);
+//   sales history comes from the side that logged most recently; other fields: local wins
+//   where local changed, otherwise remote.
+// ponytail: same-day sales logged on both devices undercount that day in history[]; stock is exact.
+function iqMerge3(base, local, remote) {
+  base = iqClean(base); local = iqClean(local); remote = iqClean(remote); // same normal form on all three sides
+  var B = {}, L = {}, R = {}, ids = [], seen = {};
+  base.forEach(function (p) { B[p.id] = p; });
+  [local, remote].forEach(function (list, i) {
+    list.forEach(function (p) { (i ? R : L)[p.id] = p; if (!seen[p.id]) { seen[p.id] = 1; ids.push(p.id); } });
+  });
+  var out = [];
+  ids.forEach(function (id) {
+    var b = B[id], l = L[id], r = R[id];
+    if (!b) { out.push(l || r); return; }             // added on one (or both) sides
+    if (!l) { if (r && !iqSameProduct(r, b)) out.push(r); return; } // deleted locally; keep only if remote edited it
+    if (!r) { if (!iqSameProduct(l, b)) out.push(l); return; }      // deleted remotely; keep only if local edited it
+    if (iqSameProduct(l, b)) { out.push(r); return; }
+    if (iqSameProduct(r, b)) { out.push(l); return; }
+    var m = {}, k;
+    for (k in r) m[k] = r[k];
+    for (k in l) if (!IQ_DERIVED[k] && !iqSame(l[k], b[k])) m[k] = l[k];
+    IQ_COUNTERS.forEach(function (k) { m[k] = Math.max(0, iqNum(b[k]) + (iqNum(l[k]) - iqNum(b[k])) + (iqNum(r[k]) - iqNum(b[k]))); });
+    var src = String(l.histDay || '') >= String(r.histDay || '') ? l : r;
+    IQ_HIST.forEach(function (k) { m[k] = src[k]; });
+    out.push(m);
+  });
+  return out;
+}
+// Sales log entries are events with a unique id; union them.
+function iqMergeSales(local, remote) {
+  var seen = {}, key = function (e) { return e.id || e.date + ':' + e.totalUnits; };
+  return remote.concat(local).filter(function (e) { if (!e || seen[key(e)]) return false; seen[key(e)] = 1; return true; })
     .sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(-365);
-  return { products: order.map(function (id) { return byId[id]; }), sales: sales };
 }
 
-// Resolves { mode, merged }: merged is { data, sales } when another device had saved
-// first — the caller should adopt it, since that's now what the cloud holds.
+// Full-screen "Syncing…" lock: no edits can land between capturing the snapshot and applying the result.
+var IQ_SYNCING = false;
+function iqBusy(on) {
+  IQ_SYNCING = on;
+  if (typeof document === 'undefined') return;
+  var el = document.getElementById('iqBusy');
+  if (on && !el) {
+    el = document.createElement('div');
+    el.id = 'iqBusy';
+    el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(13,18,38,.35);display:flex;align-items:center;justify-content:center;color:#fff;font:700 14px sans-serif';
+    el.textContent = 'Syncing…';
+    document.body.appendChild(el);
+  } else if (!on && el) el.remove();
+}
+
+// Resolves { mode, merged }: merged is { data, sales } when another device had saved first —
+// the caller must adopt it, since that's now what the cloud holds.
 function iqPush(prods, sales) {
   sales = sales || [];
   if (!iqCloudReady()) {
     localStorage.setItem('iq_cloud_snapshot', JSON.stringify({ data: prods, sales: sales, timestamp: Date.now(), deviceId: getDeviceId() }));
     return Promise.resolve({ mode: 'local' });
   }
+  if (IQ_SYNCING) return Promise.reject(new Error('A sync is already running'));
+  iqBusy(true);
   var s = iqStore();
   var ready = s ? Promise.resolve(s) : iqApi('POST', '/api/stores').then(function (r) {
     if (r.status !== 201) iqFail(r);
-    return iqStore({ storeId: r.data.storeId, token: r.data.token, version: 0 });
+    IQ_BASE = null;
+    return iqStore({ storeId: r.data.storeId, token: r.data.token });
   });
   return ready.then(function (s) {
-    var path = '/api/stores/' + s.storeId + '/snapshot', merged = null;
-    return iqApi('PUT', path, s.token, { baseVersion: s.version, products: prods, sales: sales }).then(function (r) {
+    var path = '/api/stores/' + s.storeId + '/snapshot', base = IQ_BASE || { version: 0, products: [], sales: [] };
+    var out = { products: prods, sales: sales }, merged = false;
+    return iqApi('PUT', path, s.token, { baseVersion: base.version, products: prods, sales: sales }).then(function (r) {
       if (r.status !== 409) return r;
       return iqApi('GET', path, s.token).then(function (g) {
         if (g.status !== 200) iqFail(g);
-        merged = iqMerge({ products: prods, sales: sales }, { products: iqClean(g.data.products), sales: iqScrub(g.data.sales || []) });
-        return iqApi('PUT', path, s.token, { baseVersion: g.data.version, products: merged.products, sales: merged.sales });
+        var rp = iqClean(g.data.products), rs = iqScrub(g.data.sales || []);
+        out = { products: iqMerge3(base.products, prods, rp), sales: iqMergeSales(sales, rs) };
+        merged = true;
+        return iqApi('PUT', path, s.token, { baseVersion: g.data.version, products: out.products, sales: out.sales });
       });
     }).then(function (r) {
       if (r.status !== 200) iqFail(r);
-      s.version = r.data.version;
-      iqStore(s);
-      return { mode: 'cloud', merged: merged && { data: merged.products, sales: merged.sales } };
+      iqSetBase(r.data.version, out.products, out.sales);
+      return { mode: 'cloud', merged: merged ? { data: out.products, sales: out.sales } : null };
     });
-  });
+  }).then(function (res) { iqBusy(false); return res; }, function (e) { iqBusy(false); throw e; });
 }
 
 // code: a link code from another device, or blank for this store's latest.
@@ -394,18 +520,19 @@ function iqPull(code) {
   if (code) {
     var parts = code.split(':');
     if (parts[0] !== 'iq1' || !parts[1] || !parts[2]) return Promise.reject(new Error('Invalid link code — it looks like iq1:IQ-…:…'));
-    s = { storeId: parts[1], token: parts[2], version: 0 };
+    s = { storeId: parts[1], token: parts[2] };
   }
   if (!s) return Promise.reject(new Error('This device has not synced yet — paste a link code'));
   return iqApi('GET', '/api/stores/' + s.storeId + '/snapshot', s.token).then(function (r) {
     if (r.status !== 200) iqFail(r);
     if (!r.data.version) return null;
-    return { mode: 'cloud', data: iqClean(r.data.products), sales: iqScrub(r.data.sales || []), ts: r.data.updatedAt,
-      commit: function () { s.version = r.data.version; iqStore(s); } };
+    var data = iqClean(r.data.products), sales = iqScrub(r.data.sales || []);
+    return { mode: 'cloud', data: data, sales: sales, ts: r.data.updatedAt,
+      commit: function () { iqStore(s); iqSetBase(r.data.version, data, sales); } };
   });
 }
 
-if (typeof module !== 'undefined') module.exports = { iqMerge: iqMerge, iqPush: iqPush, iqPull: iqPull, iqNeedsAction: iqNeedsAction, iqReceive: iqReceive, iqScrub: iqScrub, iqClean: iqClean, iqSafeTip: iqSafeTip, iqLogSale: iqLogSale, linReg: linReg, iqForecast: iqForecast,
+if (typeof module !== 'undefined') module.exports = { iqMerge3: iqMerge3, iqMergeSales: iqMergeSales, iqRecordDay: iqRecordDay, iqAiClean: iqAiClean, iqAttr: iqAttr, iqObs: iqObs, iqPush: iqPush, iqPull: iqPull, iqNeedsAction: iqNeedsAction, iqReceive: iqReceive, iqScrub: iqScrub, iqClean: iqClean, iqSafeTip: iqSafeTip, iqLogSale: iqLogSale, linReg: linReg, iqForecast: iqForecast,
   IQ_PARAMS: IQ_PARAMS, iqDemand: iqDemand, iqSigma: iqSigma, iqSafetyStock: iqSafetyStock, iqROP: iqROP, iqEOQ: iqEOQ, iqRecompute: iqRecompute,
   iqCover: iqCover, iqLostUnits: iqLostUnits, iqRevAtRisk: iqRevAtRisk, iqStatus: iqStatus, iqShouldOrder: iqShouldOrder, iqOrderQty: iqOrderQty,
   iqHealth: iqHealth, iqSimulate: iqSimulate };
