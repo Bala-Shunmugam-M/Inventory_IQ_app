@@ -14,9 +14,11 @@
  *   iq_device_id              — this device's stable ID
  *   iq_cloud_snapshot         — last cloud-sync snapshot
  *   iq_last_sync              — timestamp of last successful sync
+ *   iq_events                 — stock event log (sale/order/receive/adjust/close), replayed on sync merge
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Alert } from 'react-native';
 
 export const KEYS = {
   PRODS: 'inventoryiq_v8_data',
@@ -27,6 +29,7 @@ export const KEYS = {
   CLOUD: 'iq_cloud_snapshot',
   LAST_SYNC: 'iq_last_sync',
   ONBOARDED: 'iq_onboarded',
+  EVENTS: 'iq_events',
 };
 
 // ============================================================
@@ -35,7 +38,9 @@ export const KEYS = {
 export async function getDeviceId() {
   let id = await AsyncStorage.getItem(KEYS.DEVICE);
   if (!id) {
-    const r = () => Math.random().toString(36).slice(2, 7).toUpperCase();
+    // ponytail: Math.random, not a CSPRNG — RN has no crypto.getRandomValues without adding expo-crypto.
+    // The ID is the cloud-sync password, so switch to expo-crypto if sync goes beyond a demo.
+    const r = () => Math.random().toString(36).slice(2, 7).toUpperCase().padEnd(5, '0');
     id = `IQ-${r()}-${r()}`;
     await AsyncStorage.setItem(KEYS.DEVICE, id);
   }
@@ -45,21 +50,44 @@ export async function getDeviceId() {
 // ============================================================
 // PRODUCTS (CRUD)
 // ============================================================
+// Store data can come from older builds or another device: numbers must be finite and
+// non-negative ("10" + 5 must be 15, not "105"). Same rules as iqClean in docs/iq-core.js.
+const NUM_FIELDS = ['stock', 'max', 'rop', 'eoq', 'demand', 'cost', 'sell', 'lead', 'incoming'];
+export const num = (x) => { const n = Number(x); return Number.isFinite(n) && n > 0 ? n : 0; };
+export function normalize(p) {
+  const c = { ...p };
+  NUM_FIELDS.forEach((k) => { if (k in c) c[k] = num(c[k]); });
+  c.id = Number(c.id);
+  c.history = Array.isArray(c.history) ? c.history.map(num) : [];
+  c.histCens = c.history.map((_, i) => (Array.isArray(p.histCens) && p.histCens[i] ? 1 : 0));
+  return c;
+}
+
 export async function loadProducts() {
   try {
     const raw = await AsyncStorage.getItem(KEYS.PRODS);
     if (!raw) return [];
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
-    return arr.map((p) => ({ ...p, status: computeStatus(p) }));
+    return recomputeAll(arr.filter((p) => p && typeof p === 'object').map(normalize).filter((p) => Number.isFinite(p.id)));
   } catch (e) {
     console.warn('loadProducts failed', e);
     return [];
   }
 }
 
-export async function saveProducts(products) {
+// cloud.js sets busy while a sync is in flight; a save then would be overwritten by the sync result.
+export const SYNC = { busy: false };
+
+// Derived fields (ROP, EOQ, ABC, max, status) are recomputed for the whole catalog on every save.
+// Returns false (and tells the user) when nothing was written.
+export async function saveProducts(products, { fromSync = false } = {}) {
+  if (SYNC.busy && !fromSync) {
+    Alert.alert('Sync in progress', 'Try again in a moment.');
+    return false;
+  }
   try {
+    recomputeAll(products);
     await AsyncStorage.setItem(KEYS.PRODS, JSON.stringify(products));
     await AsyncStorage.setItem(KEYS.PRODS + '_ts', new Date().toISOString());
     return true;
@@ -73,106 +101,186 @@ export async function addProduct(input) {
   const products = await loadProducts();
   const newP = buildProduct(input);
   products.push(newP);
-  await saveProducts(products);
+  if (!(await saveProducts(products))) return null;
   return newP;
 }
 
+// Mutations return null when nothing was saved (e.g. a sync is in progress).
 export async function updateProduct(id, patch) {
   const products = await loadProducts();
   const idx = products.findIndex((p) => p.id === id);
   if (idx < 0) return null;
   const merged = { ...products[idx], ...patch };
-  // Re-derive computed fields if inputs changed
-  if (patch.demand != null || patch.lead != null || patch.cost != null) {
-    const recomputed = recomputeFormulas(merged);
-    Object.assign(merged, recomputed);
-  }
-  merged.status = computeStatus(merged);
   products[idx] = merged;
-  await saveProducts(products);
+  if (!(await saveProducts(products))) return null; // recomputes merged's ROP/EOQ/ABC/status in place
   return merged;
 }
 
 export async function deleteProduct(id) {
   const products = await loadProducts();
   const filtered = products.filter((p) => p.id !== id);
-  await saveProducts(filtered);
+  if (!(await saveProducts(filtered))) return null;
   return filtered;
 }
 
 // ============================================================
-// PRODUCT BUILDER — auto-computes ROP, EOQ, ABC class, status
+// EVENT LOG — every stock-changing action is also an event with a unique id, so
+// sync can replay events instead of adding up differences (cloud.js). Same as docs/iq-core.js.
+// ============================================================
+const EV_MAX = 3000, EV_DAYS = 120;
+export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+export async function loadEvents() {
+  try {
+    const a = JSON.parse((await AsyncStorage.getItem(KEYS.EVENTS)) || '[]');
+    return Array.isArray(a) ? a : [];
+  } catch {
+    return [];
+  }
+}
+export function trimEvents(ev) {
+  const cut = Date.now() - EV_DAYS * 864e5;
+  return ev.filter((e) => e && e.t >= cut).sort((a, b) => a.t - b.t).slice(-EV_MAX);
+}
+export async function saveEvents(ev) {
+  ev = trimEvents(ev);
+  await AsyncStorage.setItem(KEYS.EVENTS, JSON.stringify(ev));
+  return ev;
+}
+export async function addEvents(list) {
+  const t = Date.now(), day = localDay();
+  return saveEvents([...(await loadEvents()), ...list.map((f) => ({ id: uid(), t, day, ...f }))]);
+}
+
+// ============================================================
+// INVENTORY ENGINE — same constants and formulas as docs/iq-core.js
+// (RN can't load that file). Change both together.
+// ============================================================
+export const IQ_PARAMS = {
+  orderCost: 50, // S: ₹ per order placed (calls, travel, receiving)
+  holdRate: 0.2, // holding cost per year as a fraction of unit cost → H = holdRate × cost (₹/unit/year)
+  z: { A: 1.65, B: 1.28, C: 1.04 }, // safety factor: 95% / 90% / 85% chance an order cycle has no stockout
+  cvFallback: 0.3, // until there are minHistory days of sales, assume σ = 0.3 × mean daily demand
+  minHistory: 7, // usable logged days before sales fully replace the typed daily demand
+  window: 14, // most recent logged days used for the planning demand and its variability
+  abcCut: [0.8, 0.95], // ABC: first 80% of annual revenue = A, next 15% = B, rest = C
+  reviewDays: 1, // R: stock is reviewed once a day, so an order can go out up to a day late
+  watchBand: 1.4, // "watch" while stock is less than 40% above the reorder point
+  defaultLead: 3, // days
+};
+
+const mean = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
+export const leadOf = (p) => (p.lead > 0 ? p.lead : IQ_PARAMS.defaultLead);
+
+// Recent window with sold-out days read as lower bounds: iterate
+// d = mean(x_i if uncensored else max(x_i, d)) from the plain mean to its fixed point.
+// Returns { d, n: uncensored days, x: imputed window }. Same as iqCensMean.
+export function censMean(p) {
+  const h = Array.isArray(p.history) ? p.history : [];
+  const c = Array.isArray(p.histCens) ? p.histCens : [];
+  const from = Math.max(0, h.length - IQ_PARAMS.window), x = h.slice(from);
+  const cs = x.map((_, i) => (c[from + i] ? 1 : 0));
+  const n = cs.filter((k) => !k).length;
+  const fill = (d) => x.map((v, i) => (cs[i] ? Math.max(v, d) : v));
+  let d = mean(x);
+  for (let it = 0; it < 200 && n > 0 && n < x.length; it++) { // all censored: plain mean
+    const nd = mean(fill(d));
+    if (Math.abs(nd - d) < 1e-9) { d = nd; break; }
+    d = nd;
+  }
+  return { d, n, x: fill(d) };
+}
+// Planning demand (units/day): censor-aware average of recent days, blended with the typed
+// estimate in proportion to how many uncensored days there are (full weight at minHistory).
+export function planDemand(p) {
+  const typed = num(p.demand);
+  const e = censMean(p);
+  if (!e.n) return typed || e.d; // no uncensored day: keep the estimate; sold-out days are a lower bound
+  const w = typed ? Math.min(1, e.n / IQ_PARAMS.minHistory) : 1;
+  return w * e.d + (1 - w) * typed;
+}
+const dOf = (p) => (typeof p.planDemand === 'number' ? p.planDemand : planDemand(p));
+
+// σ of daily demand over the censor-imputed window; cvFallback under minHistory uncensored days; never below √mean.
+export function demandSigma(p, d) {
+  const { x: h, n } = censMean(p);
+  let sd = IQ_PARAMS.cvFallback * d;
+  if (n >= IQ_PARAMS.minHistory) {
+    const m = mean(h);
+    sd = Math.sqrt(h.reduce((s, x) => s + (x - m) ** 2, 0) / (h.length - 1));
+  }
+  return Math.max(sd, Math.sqrt(d));
+}
+// Protection period T = lead time + 1-day review. SS = z·σ·√T ; ROP = d·T + SS. No demand → 0.
+export const safetyStock = (sigma, lead, cls) =>
+  (IQ_PARAMS.z[cls] || IQ_PARAMS.z.C) * sigma * Math.sqrt(lead + IQ_PARAMS.reviewDays);
+export const reorderPoint = (d, sigma, lead, cls) =>
+  d > 0 ? Math.ceil(d * (lead + IQ_PARAMS.reviewDays) + safetyStock(sigma, lead, cls)) : 0;
+// EOQ = √(2·D·S / H): D = annual demand (units/yr), S = ₹/order, H = ₹ to hold one unit a year. No demand → 0.
+export function eoqOf(d, cost) {
+  if (!(d > 0)) return 0;
+  const H = Math.max(0.1, IQ_PARAMS.holdRate * (cost || 0));
+  return Math.max(1, Math.ceil(Math.sqrt((2 * d * 365 * IQ_PARAMS.orderCost) / H)));
+}
+
+// Recompute planning demand, Pareto ABC (needs the whole catalog), safety stock,
+// ROP, EOQ, max and status. Mutates and returns ps.
+export function recomputeAll(ps) {
+  ps.forEach((p) => { p.planDemand = Math.round(planDemand(p) * 100) / 100; });
+  const val = (p) => p.planDemand * 365 * (p.sell || 0);
+  const total = ps.reduce((s, p) => s + val(p), 0);
+  let cum = 0;
+  [...ps].sort((a, b) => val(b) - val(a)).forEach((p) => {
+    const share = total > 0 ? cum / total : 1;
+    cum += val(p);
+    p.cls = /^[ABC]$/.test(p.clsManual) ? p.clsManual : share < IQ_PARAMS.abcCut[0] ? 'A' : share < IQ_PARAMS.abcCut[1] ? 'B' : 'C';
+  });
+  ps.forEach((p) => {
+    const d = p.planDemand, L = leadOf(p), sigma = demandSigma(p, d);
+    p.ss = Math.round(safetyStock(sigma, L, p.cls));
+    p.rop = reorderPoint(d, sigma, L, p.cls);
+    p.eoq = eoqOf(d, p.cost);
+    p.max = Math.max(p.rop + p.eoq, p.stock || 0); // order-up-to level
+    p.status = computeStatus(p);
+  });
+  return ps;
+}
+
+// ============================================================
+// PRODUCT BUILDER — raw inputs; derived fields via recomputeAll
 // ============================================================
 export function buildProduct(input) {
   const stock = parseInt(input.stock) || 0;
-  const demand =
-    parseInt(input.demand) || Math.max(1, Math.round(stock * 0.1));
-  const cost = parseFloat(input.cost) || 0;
-  const sell = parseFloat(input.sell) || 0;
-  const lead = parseInt(input.lead) || 3;
-
-  const rop = Math.max(1, Math.ceil(demand * lead * 1.3));
-  // EOQ = sqrt(2 * D * S / H)  with S=50 setup, H=20% of cost holding
-  const D = demand * 365;
-  const S = 50;
-  const H = Math.max(0.1, cost * 0.2);
-  const eoq = Math.max(1, Math.ceil(Math.sqrt((2 * D * S) / H)));
-
-  // ABC class by daily revenue contribution
-  const revPerDay = sell * demand;
-  const cls =
-    input.cls && /^[ABC]$/i.test(input.cls)
-      ? input.cls.toUpperCase()
-      : revPerDay > 500
-      ? 'A'
-      : revPerDay > 100
-      ? 'B'
-      : 'C';
-
   const product = {
     id: input.id || Date.now() + Math.floor(Math.random() * 1000),
     name: (input.name || '').trim(),
     ico: input.ico || '📦',
     stock,
-    max: Math.max(stock * 2, rop * 3, 100),
-    rop,
-    eoq,
-    demand,
-    cost,
-    sell,
-    lead,
-    cls,
+    demand: parseInt(input.demand) || Math.max(1, Math.round(stock * 0.1)),
+    cost: parseFloat(input.cost) || 0,
+    sell: parseFloat(input.sell) || 0,
+    lead: parseInt(input.lead) || 3,
+    clsManual: input.cls && /^[ABC]$/i.test(input.cls) ? input.cls.toUpperCase() : '',
     supplier: (input.supplier || '').trim() || '—',
     phone: input.phone || '',
     incoming: 0,
     history: Array.isArray(input.history) ? input.history : [],
   };
-  product.status = computeStatus(product);
-  return product;
-}
-
-function recomputeFormulas(p) {
-  const demand = Math.max(1, p.demand || 1);
-  const lead = p.lead || 3;
-  const cost = p.cost || 0;
-  const rop = Math.max(1, Math.ceil(demand * lead * 1.3));
-  const D = demand * 365;
-  const S = 50;
-  const H = Math.max(0.1, cost * 0.2);
-  const eoq = Math.max(1, Math.ceil(Math.sqrt((2 * D * S) / H)));
-  const max = Math.max(p.max || 100, p.stock * 2, rop * 3, 100);
-  return { rop, eoq, max };
+  // ponytail: ABC of a lone product is 'A'; saveProducts re-ranks it against the catalog.
+  return recomputeAll([product])[0];
 }
 
 // ============================================================
-// STATUS LOGIC
+// STATUS & STOCK POSITION
 // ============================================================
+export const daysOfCover = (p) => (p.stock || 0) / Math.max(0.01, dOf(p));
+// Units you can't sell if you order today: lead-time demand not covered by stock.
+export const lostUnits = (p) => Math.max(0, dOf(p) * leadOf(p) - (p.stock || 0));
+export const revenueAtRisk = (p) => Math.round(lostUnits(p) * (p.sell || 0));
 export function computeStatus(p) {
-  if (!p) return 'good';
-  if (p.stock === 0) return 'critical';
-  if (p.stock <= p.rop * 0.5) return 'critical';
+  if (!p || !(dOf(p) > 0)) return 'good'; // no demand (or none known yet): nothing to reorder
+  if (!(p.stock > 0) || lostUnits(p) > 0) return 'critical'; // runs out before a new order could arrive
   if (p.stock <= p.rop) return 'order';
-  if (p.stock <= p.rop * 1.4) return 'watch';
+  if (p.stock <= p.rop * IQ_PARAMS.watchBand) return 'watch';
   return 'good';
 }
 
@@ -188,42 +296,32 @@ export async function loadSalesLog() {
   }
 }
 
+// One sales save. Only entered products are logged — a partial entry must not declare
+// zero sales for the rest (completeDay does that). Selling out or an empty shelf marks the
+// day censored. Same as iqRecordDay.
 export async function recordSales(qtyMap) {
-  // qtyMap = { [productId]: unitsSold }
   const products = await loadProducts();
-  let totalUnits = 0,
-    totalRevenue = 0,
-    totalProfit = 0;
-  const lines = [];
+  const lines = [], events = [];
+  const today = localDay();
   const updated = products.map((p) => {
-    const q = qtyMap[p.id] || 0;
-    if (q <= 0) return p;
-    const sold = Math.min(q, p.stock);
-    totalUnits += sold;
-    totalRevenue += sold * p.sell;
-    totalProfit += sold * (p.sell - p.cost);
-    lines.push({
-      id: p.id,
-      name: p.name,
-      qty: sold,
-      revenue: sold * p.sell,
-      profit: sold * (p.sell - p.cost),
-    });
-    const history = Array.isArray(p.history) ? [...p.history, sold] : [sold];
-    if (history.length > 60) history.splice(0, history.length - 60);
-    const next = { ...p, stock: Math.max(0, p.stock - sold), history };
-    next.status = computeStatus(next);
-    return next;
+    if (!(num(qtyMap[p.id]) > 0)) return p;
+    const sold = Math.min(num(qtyMap[p.id]), p.stock || 0);
+    const stock = (p.stock || 0) - sold;
+    if (sold > 0) lines.push({ id: p.id, name: p.name, qty: sold, revenue: sold * p.sell, profit: sold * (p.sell - p.cost) });
+    events.push({ type: 'sale', day: today, pid: p.id, q: sold, cens: stock <= 0 ? 1 : 0 });
+    return { ...p, stock, ...logDailySale(p, sold, today, stock <= 0) };
   });
-  await saveProducts(updated);
-  if (lines.length === 0) return null;
-
+  if (!lines.length) return null;
+  if (!(await saveProducts(updated))) return null; // logged sales feed planning demand → ROP/EOQ/ABC
+  await addEvents(events);
+  const sum = (k) => lines.reduce((s, l) => s + l[k], 0);
   const entry = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), // unique sale event id for sync
     date: new Date().toISOString(),
     items: lines.length,
-    totalUnits,
-    totalRevenue,
-    totalProfit,
+    totalUnits: sum('qty'),
+    totalRevenue: sum('revenue'),
+    totalProfit: sum('profit'),
     lines,
   };
   const log = await loadSalesLog();
@@ -233,8 +331,73 @@ export async function recordSales(qtyMap) {
   return entry;
 }
 
+// "Finished entering today's sales": every product with no sale logged today gets a
+// confirmed zero day (censored when it had no stock). Works on a day with no sales at all.
+// Returns how many products got a zero day, or null if nothing could be saved. Same as iqCompleteDay.
+export async function completeDay(today = localDay()) {
+  const products = await loadProducts();
+  let n = 0;
+  const updated = products.map((p) => {
+    if (p.histDay === today) return p;
+    n++;
+    return { ...p, ...logDailySale(p, 0, today, !(p.stock > 0)) };
+  });
+  if (!(await saveProducts(updated))) return null;
+  await addEvents([{ type: 'close', day: today }]);
+  return n;
+}
+
+// history[] = units per DAY (second save the same day adds to today's bucket);
+// histCens[i] = 1 marks a sold-out / empty-shelf day, a lower bound on that day's demand.
+// ponytail: days with no save at all are skipped, not zero-filled.
+export function localDay(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+export function logDailySale(p, qty, today, censored = false) {
+  const history = Array.isArray(p.history) ? [...p.history] : [];
+  const cens = Array.isArray(p.histCens) && p.histCens.length === history.length ? [...p.histCens] : history.map(() => 0);
+  if (p.histDay === today && history.length) {
+    history[history.length - 1] += qty;
+    if (censored) cens[cens.length - 1] = 1;
+  } else {
+    history.push(qty);
+    cens.push(censored ? 1 : 0);
+  }
+  return { history: history.slice(-60), histCens: cens.slice(-60), histDay: today };
+}
+
 // ============================================================
-// FORECASTING — Linear regression + 7-day MA blend
+// ORDERING — decide on inventory position (on hand + already ordered)
+// ============================================================
+export function needsAction(p) {
+  return p.status !== 'good' && p.stock + (p.incoming || 0) <= p.rop * IQ_PARAMS.watchBand;
+}
+export const shouldOrder = (p) => p.rop > 0 && (p.stock || 0) + (p.incoming || 0) <= p.rop;
+// How much to order: nothing while the position is above the reorder point; otherwise back up to ROP + EOQ.
+export const orderQty = (p) =>
+  shouldOrder(p) && p.eoq > 0 ? Math.ceil(p.rop + p.eoq - (p.stock || 0) - (p.incoming || 0)) : 0;
+
+export async function markOrdered(id) {
+  const p = (await loadProducts()).find((x) => x.id === id);
+  const q = p && orderQty(p);
+  if (!q) return null; // enough already on order
+  const r = await updateProduct(id, { incoming: (p.incoming || 0) + q });
+  if (r) await addEvents([{ type: 'order', pid: id, q }]);
+  return r;
+}
+
+export async function receiveStock(id) {
+  const p = (await loadProducts()).find((x) => x.id === id);
+  if (!p || !p.incoming) return null;
+  const stock = p.stock + p.incoming;
+  const r = await updateProduct(id, { stock, incoming: 0 });
+  if (r) await addEvents([{ type: 'receive', pid: id, q: p.incoming }]);
+  return r;
+}
+
+// ============================================================
+// FORECASTING — trend line + 7-day average, accuracy by backtest
 // ============================================================
 export function linReg(arr) {
   const n = arr.length;
@@ -264,32 +427,45 @@ export function linReg(arr) {
   };
 }
 
+// Next-day forecast: 0.6 × trend + 0.4 × 7-day average; trend held within ±50% of the average.
+function fcNext(h) {
+  const n = h.length, ma = mean(h.slice(-7));
+  if (n < 4) return ma;
+  const reg = linReg(h);
+  const lin = Math.min(Math.max(reg.intercept + reg.slope * n, ma * 0.5), ma * 1.5);
+  return 0.6 * lin + 0.4 * ma;
+}
+
+// Runs on the censor-imputed history (a sold-out day counts as at least the planning demand).
+// accuracy = 1 − WAPE when the last (up to) 7 logged days are forecast from the days
+// before them, scoring only uncensored days; null under 3 scored. r2 (0–100) is trend fit, not accuracy.
 export function forecastProduct(p) {
-  const hist = Array.isArray(p.history) && p.history.length
-    ? p.history
-    : [p.demand || 0];
-  const n = hist.length;
-  const reg = linReg(hist);
-  const ma7 =
-    hist.slice(-7).reduce((a, b) => a + b, 0) / Math.min(7, n || 1);
-  const nextV = reg.intercept + reg.slope * n;
-  let forecast = n < 2 ? p.demand || 0 : Math.max(0, Math.round(nextV * 0.6 + ma7 * 0.4));
-  const resid = hist.map((y, x) => y - (reg.slope * x + reg.intercept));
-  const stdErr =
-    n >= 2
-      ? Math.sqrt(resid.reduce((s, r) => s + r * r, 0) / Math.max(1, n - 2))
-      : 0;
-  const ci = Math.max(1, Math.round(1.65 * stdErr));
-  const trend = reg.slope > 0.3 ? 'up' : reg.slope < -0.3 ? 'down' : 'flat';
-  const trendPct = Math.abs(Math.round((reg.slope * 100) / (ma7 || 1)));
+  const raw = Array.isArray(p.history) ? p.history : [];
+  const c = Array.isArray(p.histCens) ? p.histCens : [];
+  const n = raw.length, d = dOf(p);
+  if (n < 2) return { forecast: Math.round(d), ci: Math.round(1.645 * demandSigma(p, d)), trend: 'flat', trendPct: 0, accuracy: null, r2: 0, ma7: Math.round(d), n };
+  const h = raw.map((x, i) => (c[i] ? Math.max(x, d) : x));
+  const k = Math.min(7, n - 4);
+  let err = 0, sq = 0, act = 0, m = 0;
+  for (let t = n - k; t < n; t++) {
+    if (c[t]) continue;
+    const e = h[t] - fcNext(h.slice(0, t));
+    err += Math.abs(e);
+    sq += e * e;
+    act += h[t];
+    m++;
+  }
+  const reg = linReg(h), ma7 = mean(h.slice(-7));
+  const pct = ma7 > 0 ? Math.round((reg.slope * 7 / ma7) * 100) : 0;
   return {
-    forecast,
-    ci,
-    trend,
-    trendPct,
-    r2: reg.r2,
-    accuracy: Math.round(reg.r2 * 100),
+    forecast: Math.max(0, Math.round(fcNext(h))),
+    ci: Math.round(1.645 * (m >= 3 ? Math.sqrt(sq / m) : demandSigma(p, d))),
+    trend: pct >= 5 ? 'up' : pct <= -5 ? 'down' : 'flat',
+    trendPct: Math.abs(pct),
+    accuracy: m >= 3 && act > 0 ? Math.max(0, Math.round((1 - err / act) * 100)) : null,
+    r2: Math.round(reg.r2 * 100),
     ma7: Math.round(ma7),
+    n,
   };
 }
 
@@ -309,9 +485,9 @@ export function aggregateKPIs(products) {
       healthPct: 0,
     };
   }
-  const monthlyRevenue = products.reduce((s, p) => s + p.sell * p.demand * 30, 0);
+  const monthlyRevenue = products.reduce((s, p) => s + p.sell * dOf(p) * 30, 0);
   const monthlyProfit = products.reduce(
-    (s, p) => s + (p.sell - p.cost) * p.demand * 30,
+    (s, p) => s + (p.sell - p.cost) * dOf(p) * 30,
     0,
   );
   const stockValue = products.reduce((s, p) => s + p.stock * p.cost, 0);
@@ -354,8 +530,7 @@ export const DEMO_PRODUCTS = [
 
 export async function loadDemo() {
   const copy = JSON.parse(JSON.stringify(DEMO_PRODUCTS));
-  copy.forEach((p) => (p.status = computeStatus(p)));
-  await saveProducts(copy);
+  await saveProducts(copy); // recomputes ROP/EOQ/ABC/status
   return copy;
 }
 
@@ -372,6 +547,7 @@ export async function clearAllData() {
     KEYS.SYNC_HIST,
     KEYS.CLOUD,
     KEYS.LAST_SYNC,
+    KEYS.EVENTS,
   ];
   await AsyncStorage.multiRemove(keysToClear);
   if (preserveDeviceId) {
@@ -405,10 +581,7 @@ export async function loadSyncHistory() {
 export async function restoreSnapshot(idx) {
   const hist = await loadSyncHistory();
   if (!hist[idx] || !hist[idx].snapshot) return null;
-  const restored = hist[idx].snapshot.map((p) => ({
-    ...p,
-    status: computeStatus(p),
-  }));
-  await saveProducts(restored);
+  const restored = hist[idx].snapshot.map((p) => ({ ...p }));
+  await saveProducts(restored); // recomputes derived fields
   return restored;
 }

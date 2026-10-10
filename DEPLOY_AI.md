@@ -24,7 +24,9 @@ and it exists purely to keep the key private.
 ```bash
 npm i -g wrangler
 wrangler login
-cd proxy
+cd backend
+wrangler d1 create inventoryiq          # paste the printed database_id into wrangler.toml
+wrangler d1 execute inventoryiq --remote --file=schema.sql
 wrangler secret put GROQ_API_KEY      # paste your gsk_... key when prompted
 wrangler deploy
 ```
@@ -73,7 +75,7 @@ the **🤖 AI Advisor** (button on the AI screen / bottom-right on desktop).
 
 - **Private repo + just testing?** You can skip the Worker and paste the key
   straight into `AI_CFG.apiKey` instead. Only do this if the repo is private.
-- **Switch provider** anytime by changing `UPSTREAM` in `proxy/worker.js`
+- **Switch provider** anytime by changing `UPSTREAM` in `backend/src/index.js`
   (Gemini, Cerebras, SambaNova endpoints are listed there) and redeploying.
 - **Expo APK** is the alternative native path; this PWA route matches your
   existing GitHub deploy and needs no build server.

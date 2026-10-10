@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>InventoryIQ — Manager Dashboard</title>
+<script src="iq-core.js"></script>
 <script>/* device routing: send phones to the mobile app (add ?view=desktop to override) */
 (function(){try{var p=new URLSearchParams(location.search);if(p.get('view')==='desktop')return;if(window.matchMedia&&window.matchMedia('(max-width:760px)').matches){location.replace('index.html');}}catch(e){}})();</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -153,8 +154,10 @@ html,body{height:100%;background:var(--bg);font-family:var(--font);-webkit-font-
   .search-box{width:160px}
 }
 </style>
+<link rel="stylesheet" href="merchant-ui.css"/>
+<script src="merchant-ui.js"></script>
 </head>
-<body>
+<body class="merchant-desktop">
 <div class="app">
 <aside class="sidebar">
   <div class="sb-brand">
@@ -225,6 +228,11 @@ html,body{height:100%;background:var(--bg);font-family:var(--font);-webkit-font-
 
   <div class="content">
     <div class="screen active" id="s-dashboard">
+      <div class="merchant-start" aria-label="Everyday tasks">
+        <button type="button" onclick="location.href='index.html?view=mobile&amp;screen=sales'"><span class="task-icon" aria-hidden="true">📝</span><span>Enter sales<small>Open the simple sales screen</small></span></button>
+        <button type="button" onclick="goScreen('products')"><span class="task-icon" aria-hidden="true">📦</span><span>Check stock<small>Products and purchase suggestions</small></span></button>
+        <button type="button" onclick="goScreen('orders')"><span class="task-icon" aria-hidden="true">📥</span><span>Orders &amp; deliveries<small>Record orders and received stock</small></span></button>
+      </div>
       <div id="intelCenter"></div>
       <div id="alertSlot"></div>
       <div class="kpi-grid" id="kpiGrid"></div>
@@ -282,7 +290,7 @@ html,body{height:100%;background:var(--bg);font-family:var(--font);-webkit-font-
 
     <div class="screen" id="s-forecast">
       <div class="card">
-        <div class="card-h"><div class="card-t">📈 Demand Forecast — Linear Regression</div><div class="card-s">Next-day prediction with 90% CI</div></div>
+        <div class="card-h"><div class="card-t">📈 Demand Forecast — Linear Regression</div><div class="card-s">Next-day prediction with typical error band</div></div>
         <div id="forecastList"></div>
       </div>
     </div>
@@ -322,21 +330,21 @@ html,body{height:100%;background:var(--bg);font-family:var(--font);-webkit-font-
 
     <div class="screen" id="s-patent">
       <div class="card">
-        <div class="card-h"><div class="card-t">✨ Feature Status</div><div class="card-s">All 6 core features active</div></div>
+        <div class="card-h"><div class="card-t">✨ Feature Status</div><div class="card-s">What this build does today</div></div>
         <div id="patentList"></div>
       </div>
     </div>
 
     <div class="screen" id="s-settings">
       <div class="dev-id-card">
-        <div class="dev-id-lbl">Your Device ID</div>
-        <div class="dev-id-val" id="devIdSetting">Loading…</div>
-        <div style="font-size:9px;color:rgba(255,255,255,.55);margin-top:5px">Share this ID across devices to sync data</div>
+        <div class="dev-id-lbl">Store link code</div>
+        <div class="dev-id-val" id="devIdSetting" style="word-break:break-all;user-select:all">Loading…</div>
+        <div style="font-size:9px;color:rgba(255,255,255,.55);margin-top:5px">Paste on another device to share data · keep it private, it works like a password</div>
       </div>
 
       <div style="font-size:10px;font-weight:800;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;padding:10px 0 8px">Data</div>
-      <div class="list-item" onclick="syncToCloud()"><div class="list-ico" style="background:var(--blue-l)">☁️</div><div class="list-info"><div class="list-t">Sync to Cloud</div><div class="list-s" id="syncStatusS">Push data to local cloud snapshot</div></div><div class="list-arr">›</div></div>
-      <div class="list-item" onclick="restoreFromCloud()"><div class="list-ico" style="background:var(--green-l)">🔄</div><div class="list-info"><div class="list-t">Restore from Cloud</div><div class="list-s">Pull from cloud snapshot</div></div><div class="list-arr">›</div></div>
+      <div class="list-item" onclick="syncToCloud()"><div class="list-ico" style="background:var(--blue-l)">☁️</div><div class="list-info"><div class="list-t">Sync to Cloud</div><div class="list-s" id="syncStatusS">Push products and sales to cloud</div></div><div class="list-arr">›</div></div>
+      <div class="list-item" onclick="restoreFromCloud()"><div class="list-ico" style="background:var(--green-l)">🔄</div><div class="list-info"><div class="list-t">Restore from Cloud</div><div class="list-s">Pull from any Device ID</div></div><div class="list-arr">›</div></div>
       <div class="list-item" onclick="showSyncHistory()"><div class="list-ico" style="background:var(--amber-l)">⏪</div><div class="list-info"><div class="list-t">Undo Last Sync</div><div class="list-s" id="syncHistS">No history yet</div></div><div class="list-arr">›</div></div>
       <div class="list-item" onclick="downloadBackup()"><div class="list-ico" style="background:var(--purple-l)">📤</div><div class="list-info"><div class="list-t">Download Local Backup</div><div class="list-s">Save JSON to device</div></div><div class="list-arr">›</div></div>
       <div class="list-item" onclick="restoreBackup()"><div class="list-ico" style="background:var(--blue-l)">📥</div><div class="list-info"><div class="list-t">Restore from Backup File</div><div class="list-s">Import a previous backup</div></div><div class="list-arr">›</div></div>
@@ -407,12 +415,11 @@ var DEVICE_KEY='iq_device_id';
 var DISMISSED_KEY='inventoryiq_v8_dismissed';
 var SYNC_HIST_KEY='inventoryiq_v8_synchist';
 
-function getDeviceId(){var d=localStorage.getItem(DEVICE_KEY);if(!d){d='IQ-'+Math.random().toString(36).slice(2,7).toUpperCase()+'-'+Math.random().toString(36).slice(2,7).toUpperCase();try{localStorage.setItem(DEVICE_KEY,d);}catch(e){}}return d;}
 function saveProds(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(PRODS));localStorage.setItem(STORAGE_KEY+'_ts',new Date().toISOString());}catch(e){}}
-function loadProds(){try{var r=localStorage.getItem(STORAGE_KEY);if(!r)return null;var a=JSON.parse(r);return Array.isArray(a)?a:null;}catch(e){return null;}}
-function loadSalesLog(){try{var r=localStorage.getItem(SALES_KEY);return r?JSON.parse(r):[];}catch(e){return [];}}
-function computeStatus(p){if(p.stock===0)return 'critical';if(p.stock<=p.rop*0.5)return 'critical';if(p.stock<=p.rop)return 'order';if(p.stock<=p.rop*1.4)return 'watch';return 'good';}
-function recomputeAllStatus(){PRODS.forEach(function(p){p.status=computeStatus(p);});}
+function loadProds(){try{var r=localStorage.getItem(STORAGE_KEY);if(!r)return null;var a=JSON.parse(r);return Array.isArray(a)?iqClean(a):null;}catch(e){return null;}}
+function loadSalesLog(){try{var r=localStorage.getItem(SALES_KEY);return r?iqScrub(JSON.parse(r)):[];}catch(e){return [];}}
+/* Recompute planning demand, ABC, ROP, EOQ, max and status for the whole catalog (iq-core.js) */
+function recomputeAllStatus(){iqRecompute(PRODS);}
 
 var DEMO_PRODS=[
   {id:1,name:'Aashirvaad Atta 5kg',ico:'🌾',stock:12,max:200,rop:30,eoq:88,demand:12,cost:285,sell:320,lead:3,cls:'A',supplier:'ITC Distributor',phone:'98765 43210',history:[9,14,11,13,15,10,14,13,15,16,14,18]},
@@ -464,34 +471,14 @@ function goScreen(s){
 
 function iqHcolLight(h){return h>=80?'#059669':h>=70?'#D97706':h>=60?'#EA580C':'#DC2626';}
 function iqRupee(n){return '₹'+Number(n||0).toLocaleString('en-IN');}
-/* unified decision engine (mockup weights) for dashboard/health/insights */
+/* unified decision engine for dashboard/health/insights — formulas in iq-core.js (iqHealth), shared with mobile web */
 function cmdIntel(){
-  var ps=PRODS;if(!ps||!ps.length)return null;
-  var invValue=0,cogsAnnual=0,excessValue=0,revRisk=0,fillNum=0,fillDen=0,fcNum=0,fcDen=0,supNum=0,supDen=0,soNum=0,soDen=0;
-  var risks=[],opps=[],plan=[],dist={high:0,med:0,low:0};
-  ps.forEach(function(p){var dd=Math.max(0.01,p.demand||0),sell=p.sell||0,cost=p.cost||0,stock=p.stock||0,rop=p.rop||0,eoq=p.eoq||0,lead=p.lead||3;
-    var acc=p.acc!=null?p.acc:(p.r2!=null?Math.round(p.r2*100):70);
-    invValue+=stock*cost;cogsAnnual+=dd*365*cost;var excessU=Math.max(0,stock-(rop+eoq)),exVal=excessU*cost;excessValue+=exVal;
-    var cover=stock/dd,rev=sell*dd;
-    soNum+=Math.min(100,(cover/(lead*1.5))*100)*rev;soDen+=rev;
-    fillNum+=(stock>0?Math.min(100,rop>0?stock/rop*100:100):0)*dd;fillDen+=dd;
-    fcNum+=acc*dd;fcDen+=dd;supNum+=Math.max(0,Math.min(100,(1-(lead-1)/13)*100))*dd;supDen+=dd;
-    var riskDays=Math.max(0,lead-cover),rr=Math.round(riskDays*dd*sell);revRisk+=rr;
-    var lvl=(stock<=rop*0.5||cover<lead)?'high':(stock<=rop)?'med':'low';dist[lvl]++;
-    if(lvl!=='low')risks.push({name:p.name,ico:p.ico||'📦',cover:Math.round(cover*10)/10,lvl:lvl,amt:rr});
-    if(exVal>0)opps.push({name:p.name,ico:p.ico||'📦',amt:Math.round(exVal)});
-    if(stock<=rop)plan.push({name:p.name,ico:p.ico||'📦',qty:eoq||Math.max(1,rop*2-stock),cost:Math.round((eoq||1)*cost),cover:Math.round(cover*10)/10});});
-  var stockout=soDen?soNum/soDen:100,service=fillDen?fillNum/fillDen:100,forecast=fcDen?fcNum/fcDen:70,supplier=supDen?supNum/supDen:80;
-  var excess=100-Math.min(100,invValue>0?excessValue/invValue*100:0);
-  var health=Math.max(0,Math.min(100,Math.round(0.30*stockout+0.25*excess+0.20*forecast+0.15*supplier+0.10*service)));
-  var grade=health>=85?'A':health>=75?'B':health>=65?'C':health>=55?'D':'E',turnover=invValue>0?cogsAnnual/invValue:0;
-  var prev=null,hist=[];try{var raw=localStorage.getItem('iq_health_hist');hist=raw?JSON.parse(raw):[];var today=new Date().toISOString().slice(0,10);
-    if(!hist.length||hist[hist.length-1].d!==today){if(hist.length)prev=hist[hist.length-1].h;hist.push({d:today,h:health});while(hist.length>60)hist.shift();localStorage.setItem('iq_health_hist',JSON.stringify(hist));}else if(hist.length>1)prev=hist[hist.length-2].h;}catch(e){}
-  risks.sort(function(a,b){return b.amt-a.amt||a.cover-b.cover;});opps.sort(function(a,b){return b.amt-a.amt;});plan.sort(function(a,b){return a.cover-b.cover;});
-  return {health:health,grade:grade,prev:prev,hist:hist,
-    sub:[['Stockout Risk (Exposure)','🔻',30,Math.round(stockout)],['Excess Inventory','📦',25,Math.round(excess)],['Forecast Accuracy','📈',20,Math.round(forecast)],['Supplier Reliability','🚚',15,Math.round(supplier)],['Service Level','✅',10,Math.round(service)]],
-    invValue:Math.round(invValue),recoverable:Math.round(excessValue),revAtRisk:revRisk,serviceLevel:Math.round(service),forecastAcc:Math.round(forecast),turnover:Math.round(turnover*10)/10,
-    risks:risks.slice(0,5),opps:opps.slice(0,5),plan:plan.slice(0,4),dist:dist};
+  var d=iqHealth(PRODS||[]);if(!d)return null;
+  var t=iqTrackHealth(d.health);d.prev=t.prev;d.hist=t.hist;
+  var meta=[['Stockout Risk (Exposure)','🔻'],['Excess Inventory','📦'],['Forecast Accuracy','📈'],['Supplier Lead Time','🚚'],['Service Level','✅']];
+  d.sub=d.sub.map(function(s,i){return [meta[i][0],meta[i][1],IQ_HEALTH_W[i],s[1]];});
+  d.risks=d.risks.slice(0,5);d.opps=d.opps.slice(0,5);d.plan=d.plan.slice(0,4);
+  return d;
 }
 function iqArc(val,col,size){var r=size/2-13,C=Math.PI*r,off=C*(1-val/100),cx=size/2,cy=size/2;
   return '<svg width="'+size+'" height="'+(size*0.66)+'" viewBox="0 0 '+size+' '+(size*0.66)+'"><path d="M13 '+cy+' A '+r+' '+r+' 0 0 1 '+(size-13)+' '+cy+'" fill="none" stroke="#E3E8F4" stroke-width="13" stroke-linecap="round"/><path d="M13 '+cy+' A '+r+' '+r+' 0 0 1 '+(size-13)+' '+cy+'" fill="none" stroke="'+col+'" stroke-width="13" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+off+'"/><text x="'+cx+'" y="'+(cy-4)+'" text-anchor="middle" font-size="'+(size*0.26)+'" font-weight="800" fill="#0D1226">'+val+'</text><text x="'+cx+'" y="'+(cy+15)+'" text-anchor="middle" font-size="11" font-weight="700" fill="#7B849E">/100</text></svg>';}
@@ -511,7 +498,7 @@ function renderHealthView(){
   h+='<div class="row-2"><div class="card"><div class="card-h"><div class="card-t">Score Breakdown</div></div>'
    +d.sub.map(function(s){var c=iqHcolLight(s[3]);return '<div style="display:flex;align-items:center;gap:12px;margin-bottom:13px"><div style="width:28px;height:28px;border-radius:8px;background:var(--bg);display:flex;align-items:center;justify-content:center">'+s[1]+'</div><div style="flex:1"><div style="font-size:12px;font-weight:700;color:var(--ink)">'+s[0]+'</div></div><div style="font-size:10px;color:var(--muted);font-weight:700;width:34px">'+s[2]+'%</div><div style="flex:1.4;height:7px;background:var(--surface);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+s[3]+'%;background:'+c+'"></div></div><div style="font-size:12px;font-weight:800;color:'+c+';width:50px;text-align:right">'+s[3]+'/100</div></div>';}).join('')
    +'</div><div class="card"><div class="card-h"><div class="card-t">About the Factors</div></div>'
-   +[['🔻','Stockout Risk','Risk of running out of top-selling products.'],['📦','Excess Inventory','Capital tied up in stock beyond demand.'],['📈','Forecast Accuracy','How accurate your demand forecasts are.'],['🚚','Supplier Reliability','On-time delivery & supplier performance.'],['✅','Service Level','Order-fulfilment rate to customers.']].map(function(f){return '<div style="display:flex;gap:10px;margin-bottom:11px"><div style="font-size:15px">'+f[0]+'</div><div><div style="font-size:12px;font-weight:700">'+f[1]+'</div><div style="font-size:11px;color:var(--muted);line-height:16px">'+f[2]+'</div></div></div>';}).join('')
+   +[['🔻','Stockout Risk','Days of stock left vs 1.5× lead time, weighted by revenue.'],['📦','Excess Inventory','Share of stock value above max (reorder point + one order).'],['📈','Forecast Accuracy','Backtest: how close forecasts were on the last 7 logged days.'],['🚚','Supplier Lead Time','Shorter lead times score higher (delivery history is not tracked yet).'],['✅','Service Level','Share of demand until the next delivery that current stock can fill.']].map(function(f){return '<div style="display:flex;gap:10px;margin-bottom:11px"><div style="font-size:15px">'+f[0]+'</div><div><div style="font-size:12px;font-weight:700">'+f[1]+'</div><div style="font-size:11px;color:var(--muted);line-height:16px">'+f[2]+'</div></div></div>';}).join('')
    +'</div></div>';
   el.innerHTML=h;
 }
@@ -546,11 +533,10 @@ function genAiReport(){var box=document.getElementById('aiReportBox'),b=document
 /* ── Revenue at Risk Engine ── */
 function raRows(){
   return (PRODS||[]).map(function(p){
-    var dd=Math.max(0.01,p.demand||0),sell=p.sell||0,stock=p.stock||0,rop=p.rop||0,lead=p.lead||3;
-    var cover=stock/dd,lostUnits=Math.max(0,lead-cover)*dd,rar=Math.round(lostUnits*sell);
-    var pr=(cover<lead||stock<=rop*0.5)?'Critical':(stock<=rop)?'High':(stock<=rop*1.4)?'Medium':'Low';
+    var cover=iqCover(p),st=iqStatus(p);
+    var pr={critical:'Critical',order:'High',watch:'Medium'}[st]||'Low';
     var dt=new Date();dt.setDate(dt.getDate()+Math.floor(cover));
-    return {name:p.name,ico:p.ico||'📦',cls:p.cls||'C',stock:stock,daysLeft:Math.round(cover*10)/10,date:dt,rar:rar,lostUnits:Math.round(lostUnits),pr:pr,action:stock<=rop?'Reorder':'Monitor'};
+    return {name:p.name,ico:p.ico||'📦',cls:p.cls||'C',stock:p.stock||0,daysLeft:Math.round(cover*10)/10,date:dt,rar:iqRevAtRisk(p),lostUnits:Math.round(iqLostUnits(p)),pr:pr,action:st==='critical'||st==='order'?'Reorder':'Monitor'};
   }).filter(function(r){return r.pr!=='Low'||r.rar>0;}).sort(function(a,b){return b.rar-a.rar;});
 }
 function iqDonut(data,centerTop,centerSub,size){size=size||150;var r=size/2-16,C=2*Math.PI*r,cum=0,total=data.reduce(function(a,d){return a+d.val;},0)||1;
@@ -598,7 +584,7 @@ function twinUpdate(){
   var sl=document.getElementById('twinSlider');if(!sl)return;var m=parseFloat(sl.value)/100;
   document.getElementById('twinMult').textContent=Math.round(m*100)+'%';
   var stockU=0,stockV=0,dUnits=0,dRev=0,dProf=0,stockouts=0;
-  PRODS.forEach(function(p){var nd=(p.demand||0)*m;stockU+=p.stock;stockV+=p.stock*p.cost;dUnits+=nd;dRev+=nd*p.sell;dProf+=nd*(p.sell-p.cost);var cover=p.stock/Math.max(0.01,nd);if(cover<(p.lead||3))stockouts++;});
+  PRODS.forEach(function(p){var nd=iqD(p)*m;stockU+=p.stock;stockV+=p.stock*p.cost;dUnits+=nd;dRev+=nd*p.sell;dProf+=nd*(p.sell-p.cost);var cover=p.stock/Math.max(0.01,nd);if(cover<iqLead(p))stockouts++;});
   var cover=dUnits>0?Math.round(stockU/dUnits):'∞';
   var node=function(ico,lbl,val,sub,c){return '<div style="flex:1;min-width:120px;text-align:center;background:var(--bg);border-radius:var(--r);padding:14px"><div style="font-size:20px">'+ico+'</div><div style="font-size:10px;font-weight:800;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.3px">'+lbl+'</div><div style="font-size:18px;font-weight:800;color:'+(c||'var(--ink)')+';margin-top:2px">'+val+'</div><div style="font-size:10px;color:var(--muted)">'+sub+'</div></div>';};
   var arrow='<div style="display:flex;align-items:center;color:var(--light);font-size:20px;padding:0 2px">→</div>';
@@ -613,21 +599,8 @@ function twinUpdate(){
 }
 
 /* ── Scenario Intelligence (what-if) ── */
-function simulate(dPct,lDelta,pPct){
-  var ps=PRODS||[];var stockouts=0,capital=0,served=0,ropInc=0,ropBase=0,rows=[];
-  ps.forEach(function(p){
-    var nd=Math.max(0.01,(p.demand||0)*(1+dPct/100)),nl=Math.max(1,(p.lead||3)+lDelta);
-    var newRop=Math.ceil(nd*nl*1.3),cost=p.cost||0;
-    var out=p.stock<newRop;if(out)stockouts++;else served++;
-    var extra=Math.max(0,newRop-p.stock)*cost;capital+=extra;
-    ropBase+=p.rop||0;ropInc+=newRop;
-    rows.push({name:p.name,ico:p.ico||'📦',out:out,capital:Math.round(extra),newRop:newRop,oldRop:p.rop||0});
-  });
-  var service=ps.length?Math.round(served/ps.length*100):100;
-  var ssPct=ropBase>0?Math.round((ropInc-ropBase)/ropBase*100):0;
-  rows.sort(function(a,b){return b.capital-a.capital;});
-  return {stockouts:stockouts,capital:Math.round(capital),service:service,ssPct:ssPct,rows:rows.slice(0,6)};
-}
+// ponytail: the price option (pPct) isn't modelled — there's no price-elasticity data to model it with.
+function simulate(dPct,lDelta,pPct){var s=iqSimulate(PRODS||[],dPct,lDelta);s.rows=s.rows.slice(0,6);return s;}
 function renderScenario(){
   var el=document.getElementById('scenarioView');if(!el)return;
   if(!PRODS.length){el.innerHTML='<div class="card"><div class="empty"><div class="empty-ico">🔮</div><div class="empty-t">No data</div><div class="empty-s">Load demo data to run scenarios.</div><button class="btn secondary" onclick="loadDemo()">🎮 Load Demo</button></div></div>';return;}
@@ -667,11 +640,11 @@ function weeklyData(){
   var last7=0,prev7=0;
   log.forEach(function(e){var t=new Date(e.date).getTime(),age=now-t;if(age<=7*DAY)last7+=e.totalRevenue||0;else if(age<=14*DAY)prev7+=e.totalRevenue||0;});
   var estimated=false;
-  if(last7===0){last7=(PRODS||[]).reduce(function(a,p){return a+p.sell*p.demand*7;},0);estimated=true;}
+  if(last7===0){last7=(PRODS||[]).reduce(function(a,p){return a+p.sell*iqD(p)*7;},0);estimated=true;}
   var revPct=prev7>0?Math.round((last7-prev7)/prev7*100):null;
   var hist=d.hist||[];var hNow=d.health,hPrev=hist.length>7?hist[hist.length-8].h:(hist.length?hist[0].h:hNow);
   var best=null,worst=null,bestV=-1,worstV=-1;
-  (PRODS||[]).forEach(function(p){var prof=(p.sell-p.cost)*p.demand*30;if(prof>bestV){bestV=prof;best=p;}var dd=Math.max(0.01,p.demand);var rar=Math.max(0,(p.lead||3)-p.stock/dd)*dd*p.sell;if(rar>worstV){worstV=rar;worst=p;}});
+  (PRODS||[]).forEach(function(p){var prof=(p.sell-p.cost)*iqD(p)*30;if(prof>bestV){bestV=prof;best=p;}var rar=iqRevAtRisk(p);if(rar>worstV){worstV=rar;worst=p;}});
   return {intel:d,revenue:Math.round(last7),revPct:revPct,estimated:estimated,hNow:hNow,hPrev:hPrev,capital:d.recoverable,service:d.serviceLevel,best:best,bestProfit:Math.round(bestV),worst:worst,worstRisk:Math.round(worstV),plan:d.plan,opps:d.opps};
 }
 var _weeklyHTML='';
@@ -724,7 +697,7 @@ var IQ_PROXY='https://inventoryiq-llm-proxy.bala-inventoryiq.workers.dev';
 var CONSULT_Q=['Why is profit decreasing?','Which products should I reorder?','Why is inventory health low?','Show my slow-moving items','Where is my cash tied up?'];
 function consultCtx(){
   var d=cmdIntel();
-  var skus=(PRODS||[]).map(function(p){var dd=Math.max(0.01,p.demand||0);return {name:p.name,class:p.cls,stock:p.stock,reorder_point:p.rop,eoq:p.eoq,lead_days:p.lead,days_cover:Math.round(p.stock/dd*10)/10,daily_demand:p.demand,cost:p.cost,sell:p.sell,margin_pct:p.sell>0?Math.round((p.sell-p.cost)/p.sell*100):0,monthly_profit:Math.round((p.sell-p.cost)*p.demand*30)};});
+  var skus=(PRODS||[]).map(function(p){var dd=iqD(p);return {name:p.name,class:p.cls,stock:p.stock,reorder_point:p.rop,eoq:p.eoq,order_qty:iqOrderQty(p),lead_days:iqLead(p),days_cover:Math.round(iqCover(p)*10)/10,daily_demand:dd,cost:p.cost,sell:p.sell,margin_pct:p.sell>0?Math.round((p.sell-p.cost)/p.sell*100):0,monthly_profit:Math.round((p.sell-p.cost)*dd*30)};});
   return {decision_intel:d?{inventory_health:d.health,grade:d.grade,revenue_at_risk:d.revAtRisk,capital_locked:d.invValue,recoverable:d.recoverable,service_level_pct:d.serviceLevel,forecast_accuracy_pct:d.forecastAcc,turnover:d.turnover}:null,products:skus};
 }
 function consultLLM(question,cb,err){
@@ -738,13 +711,13 @@ function consultLLM(question,cb,err){
    .then(function(r){return r.text();})
    .then(function(t){var j=JSON.parse(t);var c=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||'').trim();
      if(c.indexOf('```')===0)c=c.replace(/^```(json)?/i,'').replace(/```$/,'').trim();
-     var s=c.indexOf('{'),e=c.lastIndexOf('}');c=s<0?c:c.slice(s,e+1);cb(JSON.parse(c));})
+     var s=c.indexOf('{'),e=c.lastIndexOf('}');c=s<0?c:c.slice(s,e+1);cb(iqAiClean(JSON.parse(c)));})
    .catch(function(e){err(e.message);});
 }
 function renderConsultant(){
   var el=document.getElementById('consultantView');if(!el)return;
   var d=cmdIntel();
-  var kp=d?[['Inventory Health',d.health+'/100'],['Revenue at Risk',iqRupee(d.revAtRisk)],['Capital Locked',iqRupee(d.invValue)],['Forecast Accuracy',d.forecastAcc+'%']]:[];
+  var kp=d?[['Inventory Health',d.health+'/100'],['Revenue at Risk',iqRupee(d.revAtRisk)],['Capital Locked',iqRupee(d.invValue)],['Forecast Accuracy',d.forecastAcc!=null?d.forecastAcc+'%':'—']]:[];
   var sugg=CONSULT_Q.map(function(q){return '<div onclick="askConsultant(this.textContent)" style="padding:9px 12px;border:1px solid var(--border);border-radius:9px;font-size:12px;font-weight:600;color:var(--ink2);cursor:pointer;margin-bottom:6px;background:var(--white)">'+q+'</div>';}).join('');
   var h='<div class="row-2" style="align-items:start"><div class="card" style="display:flex;flex-direction:column;min-height:520px">'
    +'<div class="card-h"><div class="card-t">💬 Ask InventoryIQ AI</div><div class="card-s">Your inventory business consultant</div></div>'
@@ -785,7 +758,7 @@ function rebalancePlan(){
   var ps=PRODS||[];if(ps.length<2)return null;
   var reduce=null,increase=null,rv=-1,iv=-1;
   ps.forEach(function(p){
-    var dd=Math.max(0.01,p.demand||0),cover=p.stock/dd,margin=p.sell>0?(p.sell-p.cost)/p.sell:0;
+    var dd=Math.max(0.01,iqD(p)),cover=p.stock/dd,margin=p.sell>0?(p.sell-p.cost)/p.sell:0;
     var excess=Math.max(0,p.stock-((p.rop||0)+(p.eoq||0))),exVal=excess*(p.cost||0);
     var rscore=exVal*(1.3-margin);
     if(excess>0&&rscore>rv){rv=rscore;reduce={p:p,excess:excess,exVal:exVal};}
@@ -825,7 +798,7 @@ function renderIntelCenter(){
   h+='<div style="flex:1;min-width:200px;background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;display:flex;align-items:center;gap:14px"><svg width="76" height="76" viewBox="0 0 76 76"><circle cx="38" cy="38" r="30" fill="none" stroke="var(--surface)" stroke-width="8"/><circle cx="38" cy="38" r="30" fill="none" stroke="'+hc+'" stroke-width="8" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+off+'" transform="rotate(-90 38 38)"/><text x="38" y="36" text-anchor="middle" font-size="20" font-weight="800" fill="#0D1226">'+d.health+'</text><text x="38" y="50" text-anchor="middle" font-size="9" font-weight="700" fill="#7B849E">/100</text></svg><div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Inventory Health</div><div style="font-size:22px;font-weight:800;color:'+hc+'">Grade '+d.grade+'</div>'+(d.prev!=null?'<div style="font-size:11px;font-weight:700;color:'+(d.health>=d.prev?'#059669':'#DC2626')+'">'+(d.health>=d.prev?'▲ +'+(d.health-d.prev):'▼ '+(d.health-d.prev))+' pts vs last</div>':'<div style="font-size:11px;color:var(--muted)">baseline today</div>')+'</div></div>';
   h+=tile('Revenue at Risk',iqRupee(d.revAtRisk),'expected stockout exposure','#DC2626');
   h+=tile('Capital Locked',iqRupee(d.invValue),iqRupee(d.recoverable)+' recoverable','var(--ink)');
-  h+=tile('Forecast Accuracy',d.forecastAcc+'%','service '+d.serviceLevel+'% · '+d.turnover+'× turns','var(--ink)');
+  h+=tile('Forecast Accuracy',d.forecastAcc!=null?d.forecastAcc+'%':'—','service '+d.serviceLevel+'% · '+d.turnover+'× turns','var(--ink)');
   h+='</div>';
   var rb=rebalancePlan();
   if(rb){
@@ -859,13 +832,13 @@ function renderDashboard(){
   }
   var urgent=PRODS.filter(function(p){return p.status==='critical'||p.status==='order';});
   if(urgent.length){
-    var lossEst=urgent.reduce(function(s,p){return s+(p.sell-p.cost)*p.demand*7;},0);
-    alertSlot.innerHTML='<div class="alert-banner" onclick="goScreen(\'orders\')"><span class="ab-dot"></span><div class="ab-text"><div class="ab-title">🔴 '+urgent.length+' Product'+(urgent.length>1?'s':'')+' Need'+(urgent.length>1?'':'s')+' Ordering Right Now</div><div class="ab-sub">Estimated stockout loss if unaddressed: ₹'+Math.round(lossEst).toLocaleString('en-IN')+' this week</div></div><button class="ab-cta">View All →</button></div>';
+    var lossEst=urgent.reduce(function(s,p){return s+iqRevAtRisk(p);},0);
+    alertSlot.innerHTML='<div class="alert-banner" onclick="goScreen(\'orders\')"><span class="ab-dot"></span><div class="ab-text"><div class="ab-title">🔴 '+urgent.length+' Product'+(urgent.length>1?'s':'')+' Need'+(urgent.length>1?'':'s')+' Ordering Right Now</div><div class="ab-sub">Revenue at risk before a new order can arrive: ₹'+Math.round(lossEst).toLocaleString('en-IN')+'</div></div><button class="ab-cta">View All →</button></div>';
   }else{
     alertSlot.innerHTML='<div class="alert-banner green"><span class="ab-dot"></span><div class="ab-text"><div class="ab-title">✅ All Stock Healthy</div><div class="ab-sub">No urgent reorders required.</div></div></div>';
   }
-  var totalRev=PRODS.reduce(function(s,p){return s+p.sell*p.demand*30;},0);
-  var totalProfit=PRODS.reduce(function(s,p){return s+(p.sell-p.cost)*p.demand*30;},0);
+  var totalRev=PRODS.reduce(function(s,p){return s+p.sell*iqD(p)*30;},0);
+  var totalProfit=PRODS.reduce(function(s,p){return s+(p.sell-p.cost)*iqD(p)*30;},0);
   var stockVal=PRODS.reduce(function(s,p){return s+p.stock*p.cost;},0);
   var lowStock=PRODS.filter(function(p){return p.status!=='good';}).length;
   var fmt=function(v){return v>=100000?(v/100000).toFixed(1)+'L':Math.round(v/1000)+'K';};
@@ -900,7 +873,7 @@ function renderDashboard(){
       +'</div>';
   }).join('');
   var abcSummary={A:{count:0,rev:0},B:{count:0,rev:0},C:{count:0,rev:0}};
-  PRODS.forEach(function(p){var c=p.cls||'C';if(!abcSummary[c])abcSummary[c]={count:0,rev:0};abcSummary[c].count++;abcSummary[c].rev+=p.sell*p.demand*30;});
+  PRODS.forEach(function(p){var c=p.cls||'C';if(!abcSummary[c])abcSummary[c]={count:0,rev:0};abcSummary[c].count++;abcSummary[c].rev+=p.sell*iqD(p)*30;});
   var totalABC=abcSummary.A.rev+abcSummary.B.rev+abcSummary.C.rev||1;
   document.getElementById('abcList').innerHTML=['A','B','C'].map(function(c){
     var pct=Math.round(abcSummary[c].rev/totalABC*100);
@@ -943,7 +916,7 @@ function renderProducts(){
         +'<td>'+p.stock+' / '+p.max+'</td>'
         +'<td>'+p.rop+'</td>'
         +'<td>'+p.eoq+'</td>'
-        +'<td>'+p.demand+'</td>'
+        +'<td>'+iqD(p)+'</td>'
         +'<td>₹'+p.cost+'</td>'
         +'<td>₹'+p.sell+'</td>'
         +'<td><span class="pill '+st+'">'+stl+'</span></td>'
@@ -958,55 +931,37 @@ function renderOrders(){
     .sort(function(a,b){var o={critical:0,order:1,watch:2};return (o[a.status]||3)-(o[b.status]||3);});
   document.getElementById('ordCount').textContent=orders.length+' item'+(orders.length!==1?'s':'')+' needing reorder';
   if(!orders.length){document.getElementById('ordTbl').innerHTML='<div class="empty"><div class="empty-ico">✅</div><div class="empty-t">All Stocked Up</div><div class="empty-s">No products require reordering right now</div></div>';return;}
-  document.getElementById('ordTbl').innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Product</th><th>Stock</th><th>ROP</th><th>Suggested Order</th><th>Cost</th><th>Total</th><th>Lead Time</th><th>Supplier</th><th>Status</th><th></th></tr></thead><tbody>'
+  document.getElementById('ordTbl').innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Product</th><th>Stock</th><th>Reorder level</th><th>Suggested purchase</th><th>Cost</th><th>Total</th><th>Delivery time</th><th>Supplier</th><th>Status</th><th></th></tr></thead><tbody>'
     +orders.map(function(p){
       var st=p.status==='critical'?'crit':p.status==='order'?'ord':'wat';
       var stl=p.status==='critical'?'CRITICAL':p.status==='order'?'ORDER NOW':'WATCH';
-      var totalCost=p.eoq*p.cost;
+      var qty=iqOrderQty(p),totalCost=qty*p.cost;
       return '<tr><td class="name">'+(p.ico||'📦')+' '+p.name+(p.incoming?' <span style="font-size:10px;color:var(--blue);font-weight:600">(+'+p.incoming+' incoming)</span>':'')+'</td>'
         +'<td>'+p.stock+'</td><td>'+p.rop+'</td>'
-        +'<td><strong>'+p.eoq+'</strong> units</td>'
+        +'<td><strong>'+qty+'</strong> units</td>'
         +'<td>₹'+p.cost+'</td><td>₹'+totalCost.toLocaleString('en-IN')+'</td>'
-        +'<td>'+(p.lead||3)+'d</td>'
+        +'<td>'+iqLead(p)+'d</td>'
         +'<td>'+(p.supplier||'—')+'</td>'
         +'<td><span class="pill '+st+'">'+stl+'</span></td>'
-        +'<td><button class="act-btn" onclick="markOrdered('+p.id+')">📦 Mark Ordered</button></td>'
+        +'<td>'+(qty>0?'<button class="act-btn" onclick="iqUiOrder('+p.id+')">✓ I placed this order</button>':'<span style="font-size:11px;color:var(--muted);font-weight:700">✓ On order</span>')+(p.incoming?' <button class="act-btn" onclick="iqUiReceive('+p.id+')">📥 Stock arrived: '+p.incoming+'</button>':'')+'</td>'
         +'</tr>';
     }).join('')+'</tbody></table></div>';
 }
-function markOrdered(id){var p=PRODS.find(function(x){return x.id===id;});if(!p)return;p.incoming=(p.incoming||0)+(p.eoq||0);saveProds();toast('✅ Marked '+p.eoq+' units as ordered','green');renderOrders();updateBadges();}
+function markOrdered(id){var p=PRODS.find(function(x){return x.id===id;});if(!p)return;var q=iqMarkOrdered(p);if(!q){toast('Enough is already on order — nothing to add');return;}saveProds();toast('✅ Marked '+q+' units as ordered','green');renderOrders();updateBadges();}
+function receiveStock(id){var p=PRODS.find(function(x){return x.id===id;});if(!p||!p.incoming)return;var n=p.incoming;iqReceive(p);recomputeAllStatus();saveProds();toast('📥 Received '+n+' units of '+p.name,'green');renderOrders();updateBadges();}
 
-function linReg(arr){
-  var n=arr.length;if(n<2)return {slope:0,intercept:arr[0]||0,r2:0};
-  var sx=0,sy=0,sxy=0,sx2=0;
-  arr.forEach(function(y,x){sx+=x;sy+=y;sxy+=x*y;sx2+=x*x;});
-  var slope=(n*sxy-sx*sy)/(n*sx2-sx*sx)||0;
-  var intercept=(sy-slope*sx)/n;
-  var ym=sy/n;
-  var ssTot=arr.reduce(function(s,y){return s+Math.pow(y-ym,2);},0);
-  var ssRes=arr.reduce(function(s,y,x){return s+Math.pow(y-(slope*x+intercept),2);},0);
-  return {slope:slope,intercept:intercept,r2:ssTot>0?Math.max(0,1-ssRes/ssTot):0};
-}
 function renderForecast(){
   if(!PRODS.length){document.getElementById('forecastList').innerHTML='<div class="empty"><div class="empty-ico">📈</div><div class="empty-t">No forecast available</div><div class="empty-s">Add products to see demand predictions</div></div>';return;}
-  document.getElementById('forecastList').innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Product</th><th>Trend</th><th>Forecast (next day)</th><th>R²</th><th>90% CI</th><th>Recommendation</th></tr></thead><tbody>'
+  document.getElementById('forecastList').innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Product</th><th>Trend</th><th>Forecast (next day)</th><th>Accuracy (backtest)</th><th>± typical error</th><th>Recommendation</th></tr></thead><tbody>'
     +PRODS.map(function(p){
-      var h=p.history||[];var n=h.length;
-      var reg=linReg(h);
-      var nextV=reg.intercept+reg.slope*n;
-      var ma7=n>=7?h.slice(-7).reduce(function(a,b){return a+b;},0)/7:p.demand;
-      var fcast=Math.max(0,Math.round(nextV*0.6+ma7*0.4));
-      if(n<2)fcast=p.demand;
-      var resid=h.map(function(y,x){return y-(reg.slope*x+reg.intercept);});
-      var stdErr=n>=2?Math.sqrt(resid.reduce(function(s,r){return s+r*r;},0)/Math.max(1,n-2)):0;
-      var ci=Math.round(1.65*stdErr);
-      var trend=reg.slope>0.3?'📈 Up':reg.slope<-0.3?'📉 Down':'➡️ Stable';
-      var rec=reg.slope>0.3?'Increase next order':reg.slope<-0.3?'Reduce next order':'Maintain order quantity';
-      var col=reg.slope>0.3?'var(--red)':reg.slope<-0.3?'var(--green)':'var(--ink2)';
+      var f=iqForecast(p),fcast=f.forecast,ci=f.ci,up=f.trend==='up',dn=f.trend==='down';
+      var trend=up?'📈 Up':dn?'📉 Down':'➡️ Stable';
+      var rec=up?'Increase next order':dn?'Reduce next order':'Maintain order quantity';
+      var col=up?'var(--red)':dn?'var(--green)':'var(--ink2)';
       return '<tr><td class="name">'+(p.ico||'📦')+' '+p.name+'</td>'
         +'<td style="color:'+col+';font-weight:700">'+trend+'</td>'
         +'<td><strong>'+fcast+' units</strong></td>'
-        +'<td>'+(reg.r2*100).toFixed(0)+'%</td>'
+        +'<td>'+(f.acc!=null?f.acc+'%':'— needs 7 days')+'</td>'
         +'<td>±'+ci+'</td>'
         +'<td>'+rec+'</td>'
         +'</tr>';
@@ -1016,12 +971,12 @@ function renderForecast(){
 function supplierIntel(){
   var by={};
   PRODS.forEach(function(p){var s=p.supplier&&p.supplier!=='—'?p.supplier:'Unassigned';if(!by[s])by[s]={name:s,count:0,leads:[],value:0,atRisk:0,rar:0,leadScore:0,svcScore:0,n:0};
-    var dd=Math.max(0.01,p.demand||0),cover=p.stock/dd,lead=p.lead||3;
+    var lead=iqLead(p);
     by[s].count++;by[s].leads.push(lead);by[s].value+=p.stock*p.cost;
     by[s].leadScore+=Math.max(0,Math.min(100,(1-(lead-1)/13)*100));
     by[s].svcScore+=Math.min(100,p.rop>0?p.stock/p.rop*100:100);by[s].n++;
-    if(p.stock<=p.rop||cover<lead)by[s].atRisk++;
-    by[s].rar+=Math.round(Math.max(0,lead-cover)*dd*p.sell);});
+    if(p.stock<=p.rop)by[s].atRisk++;
+    by[s].rar+=iqRevAtRisk(p);});
   var sups=Object.keys(by).map(function(k){var s=by[k];var ls=s.leadScore/s.n,ss=s.svcScore/s.n;
     return {name:s.name,count:s.count,avgLead:Math.round(s.leads.reduce(function(a,b){return a+b;},0)/s.leads.length*10)/10,value:Math.round(s.value),atRisk:s.atRisk,rar:s.rar,onTime:Math.round(ls),reliability:Math.round(0.55*ls+0.45*ss)};});
   sups.sort(function(a,b){return b.reliability-a.reliability;});
@@ -1033,7 +988,7 @@ function renderSuppliers(){
   var tbl=document.getElementById('supTbl');if(!tbl)return;
   if(!sups.length){tbl.innerHTML='<div class="empty"><div class="empty-ico">🏭</div><div class="empty-t">No suppliers</div><div class="empty-s">Add products with suppliers to see them here</div></div>';return;}
   var col=function(v){return v>=80?'#059669':v>=65?'#D97706':'#DC2626';};
-  var cards=sups.map(function(s){var c=col(s.reliability);return '<div style="background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px"><div style="display:flex;align-items:center;gap:14px"><div style="width:54px;height:54px;border-radius:12px;background:'+c+'18;display:flex;flex-direction:column;align-items:center;justify-content:center"><div style="font-size:18px;font-weight:800;color:'+c+'">'+s.reliability+'</div><div style="font-size:7px;font-weight:800;color:var(--muted)">SCORE</div></div><div style="flex:1"><div style="font-size:14px;font-weight:800;color:var(--ink)">🏭 '+s.name+'</div><div style="font-size:11px;color:var(--muted);font-weight:600;margin-top:2px">'+s.count+' SKUs · avg lead '+s.avgLead+'d · '+s.onTime+'% on-time (modeled)</div></div><div style="text-align:right">'+(s.atRisk>0?'<div style="font-size:12px;font-weight:800;color:var(--red)">'+s.atRisk+' at risk</div><div style="font-size:11px;color:var(--muted)">'+iqRupee(s.rar)+' exposed</div>':'<div style="font-size:12px;font-weight:700;color:var(--green)">✓ healthy</div>')+'</div></div><div style="height:6px;background:var(--surface);border-radius:3px;margin-top:10px;overflow:hidden"><div style="height:100%;width:'+s.reliability+'%;background:'+c+'"></div></div></div>';}).join('');
+  var cards=sups.map(function(s){var c=col(s.reliability);return '<div style="background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px"><div style="display:flex;align-items:center;gap:14px"><div style="width:54px;height:54px;border-radius:12px;background:'+c+'18;display:flex;flex-direction:column;align-items:center;justify-content:center"><div style="font-size:18px;font-weight:800;color:'+c+'">'+s.reliability+'</div><div style="font-size:7px;font-weight:800;color:var(--muted)">SCORE</div></div><div style="flex:1"><div style="font-size:14px;font-weight:800;color:var(--ink)">🏭 '+s.name+'</div><div style="font-size:11px;color:var(--muted);font-weight:600;margin-top:2px">'+s.count+' SKUs · avg lead '+s.avgLead+'d · '+s.onTime+' lead-time score (delivery history not tracked)</div></div><div style="text-align:right">'+(s.atRisk>0?'<div style="font-size:12px;font-weight:800;color:var(--red)">'+s.atRisk+' at risk</div><div style="font-size:11px;color:var(--muted)">'+iqRupee(s.rar)+' exposed</div>':'<div style="font-size:12px;font-weight:700;color:var(--green)">✓ healthy</div>')+'</div></div><div style="height:6px;background:var(--surface);border-radius:3px;margin-top:10px;overflow:hidden"><div style="height:100%;width:'+s.reliability+'%;background:'+c+'"></div></div></div>';}).join('');
   var weakest=sups[sups.length-1];
   var ai=weakest&&weakest.reliability<75?'<div style="background:linear-gradient(135deg,#F5F3FF,#EEF3FF);border:1px solid var(--blue-m);border-radius:var(--r);padding:14px;margin-bottom:12px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#7C5CFC,#4A3FD4);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:12px">✦</span><span style="font-size:13px;font-weight:800">AI Supplier Insight</span></div><div style="font-size:13px;color:var(--ink2);line-height:20px"><b>'+weakest.name+'</b> has the weakest reliability ('+weakest.reliability+'/100, avg lead '+weakest.avgLead+'d)'+(weakest.atRisk>0?' and is tied to '+iqRupee(weakest.rar)+' of revenue at risk':'')+'. Consider diversifying critical SKUs to a faster, higher-scoring supplier.</div></div>':'';
   tbl.innerHTML=ai+cards;
@@ -1083,19 +1038,19 @@ function renderStockReport(){
 
 function renderABC(){
   if(!PRODS.length){document.getElementById('abcDetail').innerHTML='<div class="empty"><div class="empty-ico">🔷</div><div class="empty-t">No data for ABC Analysis</div><div class="empty-s">Add products first</div></div>';return;}
-  var total=PRODS.reduce(function(s,p){return s+p.sell*p.demand*30;},0);
+  var total=PRODS.reduce(function(s,p){return s+p.sell*iqD(p)*30;},0);
   var byCls={A:[],B:[],C:[]};
   PRODS.forEach(function(p){var c=p.cls||'C';if(!byCls[c])byCls[c]=[];byCls[c].push(p);});
   var html='';
   ['A','B','C'].forEach(function(c){
     var prods=byCls[c]||[];
-    var rev=prods.reduce(function(s,p){return s+p.sell*p.demand*30;},0);
+    var rev=prods.reduce(function(s,p){return s+p.sell*iqD(p)*30;},0);
     var pct=total?Math.round(rev/total*100):0;
     html+='<div style="margin-bottom:18px">'
       +'<div class="abc-row"><div class="abc-cls '+c+'">'+c+'</div><div class="abc-info"><div class="abc-name">Class '+c+' — '+prods.length+' product'+(prods.length!==1?'s':'')+'</div><div class="abc-sub">₹'+Math.round(rev/1000)+'K monthly revenue · '+pct+'% of total</div><div class="abc-track"><div class="abc-fill '+c+'" style="width:'+pct+'%"></div></div></div></div>';
     if(prods.length){
       html+='<div style="overflow-x:auto"><table class="tbl" style="margin-top:8px"><thead><tr><th>Product</th><th>Stock</th><th>Demand</th><th>Monthly Revenue</th><th>Status</th></tr></thead><tbody>'
-        +prods.sort(function(a,b){return b.sell*b.demand-a.sell*a.demand;}).map(function(p){var st=p.status==='critical'?'crit':p.status==='order'?'ord':p.status==='watch'?'wat':'gd';return '<tr><td class="name">'+(p.ico||'📦')+' '+p.name+'</td><td>'+p.stock+'</td><td>'+p.demand+'/day</td><td>₹'+Math.round(p.sell*p.demand*30).toLocaleString('en-IN')+'</td><td><span class="pill '+st+'">'+(p.status||'good').toUpperCase()+'</span></td></tr>';}).join('')+'</tbody></table></div>';
+        +prods.sort(function(a,b){return b.sell*iqD(b)-a.sell*iqD(a);}).map(function(p){var st=p.status==='critical'?'crit':p.status==='order'?'ord':p.status==='watch'?'wat':'gd';return '<tr><td class="name">'+(p.ico||'📦')+' '+p.name+'</td><td>'+p.stock+'</td><td>'+iqD(p)+'/day</td><td>₹'+Math.round(p.sell*iqD(p)*30).toLocaleString('en-IN')+'</td><td><span class="pill '+st+'">'+(p.status||'good').toUpperCase()+'</span></td></tr>';}).join('')+'</tbody></table></div>';
     }
     html+='</div>';
   });
@@ -1104,14 +1059,7 @@ function renderABC(){
 
 function renderPatent(){
   var sha=window.isSecureContext&&typeof crypto!=='undefined'&&typeof crypto.subtle!=='undefined';
-  var inns=[
-    {n:'1. DSE — Differential Sync Engine',d:'Only changed products transmitted via byte-level state comparison. Cuts bandwidth ~80%.',ok:true},
-    {n:'2. VCR — Vector Clock Resolver',d:'Three-phase merge: vector compare → timestamp fallback → field-level priority. Conflict-free convergence.',ok:true},
-    {n:'3. PAP — Predictive Analytics Pre-fetcher',d:'Speculative computation during requestIdleCallback cycles. Sub-zero perceived latency.',ok:true},
-    {n:'4. EnergyGuard — Battery-aware Scheduler',d:'Queries navigator.getBattery() and gates computation during low-charge / high-thermal states.',ok:true},
-    {n:'5. FieldLock + CLOCK_OFFSET',d:'NTP-style clock synchronisation compensates for physical oscillator drift across devices.',ok:true},
-    {n:'6. SHA-256 Integrity Hash',d:sha?'Web Crypto API active — hardware-accelerated cryptographic co-processor.':'Fallback FNV-1a — Web Crypto API unavailable (HTTP context).',ok:sha}
-  ];
+  var inns=iqFeatures();
   document.getElementById('patentList').innerHTML=inns.map(function(i){
     return '<div style="display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid var(--border)">'
       +'<div style="width:30px;height:30px;border-radius:8px;background:'+(i.ok?'var(--green-l)':'var(--amber-l)')+';display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">'+(i.ok?'✅':'⚠️')+'</div>'
@@ -1122,9 +1070,9 @@ function renderPatent(){
 }
 
 function renderSettings(){
-  document.getElementById('devIdSetting').textContent=getDeviceId();
+  document.getElementById('devIdSetting').textContent=(iqLinkCode()||(iqCloudReady()?'Sync once to create your store':'Cloud sync off — data stays on this device'));
   var lastSync=localStorage.getItem('iq_last_sync');
-  document.getElementById('syncStatusS').textContent=lastSync?'Last synced: '+new Date(parseInt(lastSync)).toLocaleString():'Push data to local cloud snapshot';
+  document.getElementById('syncStatusS').textContent=lastSync?'Last synced: '+new Date(parseInt(lastSync)).toLocaleString():(iqCloudReady()?'Not yet synced':'Cloud not configured — saves on this device');
   try{var h=JSON.parse(localStorage.getItem(SYNC_HIST_KEY)||'[]');document.getElementById('syncHistS').textContent=h.length?h.length+' saved state'+(h.length!==1?'s':''):'No history yet';}catch(e){}
 }
 
@@ -1148,7 +1096,7 @@ function openEdit(id){
   document.getElementById('m-del').style.display='inline-block';
   document.getElementById('m-name').value=p.name||'';
   document.getElementById('m-ico').value=p.ico||'';
-  document.getElementById('m-cls').value=p.cls||'';
+  document.getElementById('m-cls').value=p.clsManual||'';
   document.getElementById('m-stock').value=p.stock||0;
   document.getElementById('m-demand').value=p.demand||0;
   document.getElementById('m-cost').value=p.cost||0;
@@ -1171,21 +1119,15 @@ function doSubmit(){
   var supplier=(document.getElementById('m-supplier').value||'').trim()||'—';
   if(cost<=0){alert('Cost must be greater than 0.');return;}
   if(sell<=0){alert('Sell price must be greater than 0.');return;}
-  var rop=Math.max(1,Math.ceil(demand*lead*1.3));
-  var D=demand*365;var S=50;var H=Math.max(0.1,cost*0.2);
-  var eoq=Math.max(1,Math.ceil(Math.sqrt(2*D*S/H)));
-  var revPerDay=sell*demand;
-  var cls=clsIn==='A'||clsIn==='B'||clsIn==='C'?clsIn:(revPerDay>500?'A':revPerDay>100?'B':'C');
+  var clsManual=/^[ABC]$/.test(clsIn)?clsIn:''; // blank = Pareto ABC from revenue
+  // ROP, EOQ, ABC class, max and status are derived for the whole catalog by iqRecompute
   if(editingId){
     var p=PRODS.find(function(x){return x.id===editingId;});if(!p){closeModal();return;}
-    p.name=name;p.ico=ico;p.cls=cls;p.stock=stock;p.demand=demand;p.cost=cost;p.sell=sell;p.lead=lead;p.supplier=supplier;
-    p.rop=rop;p.eoq=eoq;p.max=Math.max(p.max||100,stock*2,rop*3,100);
-    p.status=computeStatus(p);
-    saveProds();toast('✅ Updated '+name,'green');
+    p.name=name;p.ico=ico;p.clsManual=clsManual;p.stock=stock;p.demand=demand;p.cost=cost;p.sell=sell;p.lead=lead;p.supplier=supplier;
+    recomputeAllStatus();saveProds();toast('✅ Updated '+name,'green');
   }else{
-    var newP={id:Date.now(),name:name,ico:ico,stock:stock,max:Math.max(stock*2,rop*3,100),rop:rop,eoq:eoq,demand:demand,cost:cost,sell:sell,lead:lead,cls:cls,supplier:supplier,phone:'',incoming:0,history:[]};
-    newP.status=computeStatus(newP);
-    PRODS.push(newP);saveProds();toast('✅ Added '+name,'green');
+    PRODS.push({id:Date.now(),name:name,ico:ico,stock:stock,demand:demand,cost:cost,sell:sell,lead:lead,clsManual:clsManual,supplier:supplier,phone:'',incoming:0,history:[]});
+    recomputeAllStatus();saveProds();toast('✅ Added '+name,'green');
   }
   closeModal();refreshAll();
 }
@@ -1194,13 +1136,13 @@ function doDelete(){
   var p=PRODS.find(function(x){return x.id===editingId;});if(!p)return;
   if(!confirm('Delete "'+p.name+'"? This cannot be undone.'))return;
   PRODS=PRODS.filter(function(x){return x.id!==editingId;});
-  saveProds();closeModal();toast('🗑 Deleted','green');refreshAll();
+  recomputeAllStatus();saveProds();closeModal();toast('🗑 Deleted','green');refreshAll();
 }
 function deleteProd(id){
   var p=PRODS.find(function(x){return x.id===id;});if(!p)return;
   if(!confirm('Delete "'+p.name+'"?'))return;
   PRODS=PRODS.filter(function(x){return x.id!==id;});
-  saveProds();toast('🗑 Deleted','green');refreshAll();
+  recomputeAllStatus();saveProds();toast('🗑 Deleted','green');refreshAll();
 }
 
 function loadDemo(){
@@ -1225,7 +1167,7 @@ function downloadBackup(){
 }
 function restoreBackup(){
   var inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';
-  inp.onchange=function(e){var f=e.target.files&&e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(ev){try{var d=JSON.parse(ev.target.result);if(!d.products||!Array.isArray(d.products))throw 'invalid';if(!confirm('Restore '+d.products.length+' products? This replaces current data.'))return;PRODS=d.products;recomputeAllStatus();saveProds();if(d.sales&&Array.isArray(d.sales)){try{localStorage.setItem(SALES_KEY,JSON.stringify(d.sales));}catch(e){}}toast('✅ Restored '+PRODS.length+' products','green');refreshAll();}catch(e){alert('Could not read backup file.');}};r.readAsText(f);};
+  inp.onchange=function(e){var f=e.target.files&&e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(ev){try{var d=JSON.parse(ev.target.result);if(!d.products||!Array.isArray(d.products))throw 'invalid';if(!confirm('Restore '+d.products.length+' products? This replaces current data.'))return;PRODS=iqClean(d.products);recomputeAllStatus();saveProds();if(d.sales&&Array.isArray(d.sales)){try{localStorage.setItem(SALES_KEY,JSON.stringify(d.sales));}catch(e){}}toast('✅ Restored '+PRODS.length+' products','green');refreshAll();}catch(e){alert('Could not read backup file.');}};r.readAsText(f);};
   inp.click();
 }
 function exportCSV(){
@@ -1239,17 +1181,29 @@ function exportCSV(){
   toast('✅ CSV exported','green');
 }
 function syncToCloud(){
-  if(!PRODS.length){toast('Nothing to sync — add products first','red');return;}
+  if(!PRODS.length&&!iqLinkCode()){toast('Nothing to sync — add products first','red');return;}
   try{var h=JSON.parse(localStorage.getItem(SYNC_HIST_KEY)||'[]');h.push({ts:new Date().toISOString(),count:PRODS.length,snapshot:JSON.parse(JSON.stringify(PRODS))});if(h.length>5)h=h.slice(-5);localStorage.setItem(SYNC_HIST_KEY,JSON.stringify(h));}catch(e){}
-  try{localStorage.setItem('iq_cloud_snapshot',JSON.stringify({data:PRODS,timestamp:Date.now(),deviceId:getDeviceId()}));}catch(e){}
-  localStorage.setItem('iq_last_sync',Date.now().toString());
-  toast('✅ Synced '+PRODS.length+' products','green');
-  if(curScreen==='settings')renderSettings();
+  iqPush(PRODS,loadSalesLog()).then(function(r){
+    localStorage.setItem('iq_last_sync',Date.now().toString());
+    if(r.merged){PRODS=r.merged.data;recomputeAllStatus();saveProds();try{localStorage.setItem(SALES_KEY,JSON.stringify(r.merged.sales));}catch(e){}refreshAll();}
+    var cf=(r.conflicts||[]).map(function(c){return 'Stock for '+c.name+' differed between devices — kept '+c.kept+', please recount';});
+    if(cf.length)toast(cf.join(' · '),'red');
+    else toast(r.mode==='cloud'?(r.merged?'✅ Merged with changes from another device · ':'✅ Synced ')+PRODS.length+' products':'💾 Saved on this device only — cloud sync not configured','green');
+    if(curScreen==='settings')renderSettings();
+  }).catch(function(e){toast('Sync failed: '+e.message,'red');});
 }
 function restoreFromCloud(){
-  var snap=localStorage.getItem('iq_cloud_snapshot');
-  if(!snap){toast('No cloud snapshot found','red');return;}
-  try{var d=JSON.parse(snap);if(!confirm('Found '+d.data.length+' products from '+new Date(d.timestamp).toLocaleString()+'. Restore?'))return;PRODS=d.data;recomputeAllStatus();saveProds();toast('✅ Restored '+PRODS.length+' products','green');refreshAll();}catch(e){toast('Restore failed','red');}
+  var id=prompt('Store link code from another device (iq1:…), or blank for the latest of this store:');
+  if(id===null)return;
+  iqPull(id).then(function(d){
+    if(!d){toast(iqCloudReady()?'Nothing saved to that store yet':'No snapshot saved on this device','red');return;}
+    if(d.mode==='local'&&id.trim()){toast('Cloud sync not configured — can only restore this device\'s snapshot','red');return;}
+    if(!confirm(d.data.length?'Found '+d.data.length+' products from '+new Date(d.ts).toLocaleString()+'. Restore? This replaces current data.':'The saved catalog from '+new Date(d.ts).toLocaleString()+' is empty. Restore it and remove all products from this device?'))return;
+    d.commit();
+    PRODS=d.data;recomputeAllStatus();saveProds();
+    if(d.sales){try{localStorage.setItem(SALES_KEY,JSON.stringify(d.sales));}catch(e){}}
+    toast('✅ Restored '+PRODS.length+' products','green');refreshAll();
+  }).catch(function(e){toast('Restore failed: '+e.message,'red');});
 }
 function showSyncHistory(){
   var h=[];try{h=JSON.parse(localStorage.getItem(SYNC_HIST_KEY)||'[]');}catch(e){}
@@ -1343,33 +1297,14 @@ window.addEventListener('storage',function(e){
    +'18 words; each explanation max 8 words; each action max 10 words starting with a verb; expected_effect max '
    +'6 words; team bullets max 8 words, max 2 per team; forecast_narrative max 16 words. Never use markdown.';
   function esc(s){return String(s==null?'':s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
-  function getProds(){try{var r=localStorage.getItem(AI_CFG.storageKey);var a=r?JSON.parse(r):[];return Array.isArray(a)?a:(a.data||[]);}catch(e){return [];}}
-  function decisionIntel(){var ps=getProds();if(!ps.length)return null;
-    var invValue=0,cogsAnnual=0,excessValue=0,revRiskTotal=0,svcNum=0,svcDen=0,fcNum=0,fcDen=0,supNum=0,supDen=0,risks=[],opps=[],revItems=[];
-    ps.forEach(function(p){var dd=Math.max(0.0001,(p.demand||0));var acc=p.acc!=null?p.acc:(p.r2!=null?Math.round(p.r2*100):null);
-      var sell=p.sell||0,cost=p.cost||0,stock=p.stock||0,rop=p.rop||0,eoq=p.eoq||0,lead=p.lead||3;
-      invValue+=stock*cost;cogsAnnual+=dd*365*cost;var excessU=Math.max(0,stock-(rop+eoq)),exVal=excessU*cost;excessValue+=exVal;
-      var rev=sell*dd,svc=Math.min(100,rop>0?(stock/rop)*100:100);svcNum+=svc*rev;svcDen+=rev;
-      if(acc!=null){fcNum+=acc*dd;fcDen+=dd;}
-      var sup=Math.max(0,Math.min(100,(1-(lead-1)/13)*100));supNum+=sup*dd;supDen+=dd;
-      var riskDays=Math.max(0,lead-(stock/dd)),rr=Math.round(riskDays*dd*sell);
-      if(rr>0){revRiskTotal+=rr;revItems.push({name:p.name,ico:p.ico||'📦',amt:rr});}
-      if(stock<=rop)risks.push({name:p.name,ico:p.ico||'📦',cover:Math.round(stock/dd*10)/10});
-      if(exVal>0)opps.push({name:p.name,ico:p.ico||'📦',amt:Math.round(exVal)});});
-    var service=svcDen?svcNum/svcDen:100,forecast=fcDen?fcNum/fcDen:75,supplier=supDen?supNum/supDen:80;
-    var turnover=invValue>0?cogsAnnual/invValue:0,capital=Math.min(100,turnover/12*100),overstock=100-Math.min(100,invValue>0?excessValue/invValue*100:0);
-    var health=Math.max(0,Math.min(100,Math.round(0.30*service+0.20*capital+0.20*forecast+0.15*overstock+0.15*supplier)));
-    var grade=health>=90?'A':health>=80?'B':health>=70?'C':health>=60?'D':'E',prev=null;
-    try{var raw=localStorage.getItem('iq_health_hist'),hist=raw?JSON.parse(raw):[],today=new Date().toISOString().slice(0,10);
-      if(!hist.length||hist[hist.length-1].d!==today){if(hist.length)prev=hist[hist.length-1].h;hist.push({d:today,h:health});while(hist.length>30)hist.shift();localStorage.setItem('iq_health_hist',JSON.stringify(hist));}else if(hist.length>1)prev=hist[hist.length-2].h;}catch(e){}
-    revItems.sort(function(a,b){return b.amt-a.amt;});risks.sort(function(a,b){return (a.cover==null?99:a.cover)-(b.cover==null?99:b.cover);});opps.sort(function(a,b){return b.amt-a.amt;});
-    return {health:health,grade:grade,prev:prev,sub:{service:Math.round(service),capital:Math.round(capital),forecast:Math.round(forecast),overstock:Math.round(overstock),supplier:Math.round(supplier)},invValue:Math.round(invValue),recoverable:Math.round(excessValue),revAtRisk:revRiskTotal,serviceLevel:Math.round(service),turnover:Math.round(turnover*10)/10,dio:turnover>0?Math.round(365/turnover):null,forecastAcc:Math.round(forecast),risks:risks.slice(0,4),opps:opps.slice(0,3)};}
+  function getProds(){try{var r=localStorage.getItem(AI_CFG.storageKey);var a=r?JSON.parse(r):[];return iqRecompute(iqClean(Array.isArray(a)?a:(a.data||[])));}catch(e){return [];}}
+  function decisionIntel(){var d=iqHealth(getProds());if(!d)return null;var t=iqTrackHealth(d.health);d.prev=t.prev;d.risks=d.risks.slice(0,4);d.opps=d.opps.slice(0,3);return d;}
   function hcol(h){return h>=80?'#34D399':h>=70?'#FBBF24':h>=60?'#FB923C':'#F87171';}
   function rup(n){return '₹'+Number(n||0).toLocaleString('en-IN');}
   function renderCmd(){var el=document.getElementById('aiCmd');if(!el)return;var d=decisionIntel();if(!d){el.innerHTML='';return;}
     var hc=hcol(d.health),C=2*Math.PI*26,off=C*(1-d.health/100),delta=d.prev!=null?(d.health-d.prev):null;
     var dt=delta==null?'<span style="color:#8B93B8">baseline today</span>':(delta>0?'<span style="color:#34D399">▲ +'+delta+' pts</span>':delta<0?'<span style="color:#F87171">▼ '+delta+' pts</span>':'<span style="color:#8B93B8">no change</span>');
-    var subs=[['Service',d.sub.service],['Capital',d.sub.capital],['Forecast',d.sub.forecast],['Overstock',d.sub.overstock],['Supplier',d.sub.supplier]];
+    var subs=d.sub;
     var h='<div style="background:linear-gradient(160deg,#13182C,#0C1020);border:1px solid #232c46;border-radius:14px;padding:15px;margin-bottom:10px"><div style="display:flex;align-items:center;gap:16px">'
      +'<svg width="78" height="78" viewBox="0 0 68 68"><circle cx="34" cy="34" r="26" fill="none" stroke="#232c46" stroke-width="7"/><circle cx="34" cy="34" r="26" fill="none" stroke="'+hc+'" stroke-width="7" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+off+'" transform="rotate(-90 34 34)"/><text x="34" y="31" text-anchor="middle" fill="#fff" font-size="20" font-weight="800">'+d.health+'</text><text x="34" y="45" text-anchor="middle" fill="#8B93B8" font-size="8" font-weight="700">/100</text></svg>'
      +'<div style="flex:1"><div style="font-size:11px;color:#8B93B8;font-weight:700">INVENTORY HEALTH</div><div style="font-size:22px;font-weight:800;color:'+hc+'">Grade '+d.grade+'</div><div style="font-size:11px;margin-top:2px">'+dt+'</div></div>'
@@ -1384,7 +1319,7 @@ window.addEventListener('storage',function(e){
      +'<div style="flex:1;background:#13182A;border:1px solid #232c46;border-radius:12px;padding:11px"><div style="font-size:9px;font-weight:800;color:#7FE0B0;margin-bottom:6px">💰 OPPORTUNITIES</div>'+(d.opps.length?d.opps.map(function(o){return '<div style="font-size:11px;color:#E5E7EB;margin-bottom:4px">'+o.ico+' '+esc(o.name)+' <span style="color:#7FE0B0">'+rup(o.amt)+'</span></div>';}).join(''):'<div style="font-size:10px;color:#8B93B8">None</div>')+'</div></div>';
     el.innerHTML=h;}
   function payload(){var rank={critical:0,order:1,watch:2,good:3};
-    var skus=getProds().map(function(p){var dd=p.forecast||p.demand||1;return {name:p.name,class:p.cls,status:p.status,stock:p.stock,reorder_point:p.rop,eoq:p.eoq,lead_time_days:p.lead,days_cover:dd>0?Math.round(p.stock/dd*10)/10:null,cost:p.cost,sell:p.sell,margin_pct:p.sell>0?Math.round((p.sell-p.cost)/p.sell*100):0,forecast_next_day:p.forecast||null,forecast_trend:p.trend||null};})
+    var skus=getProds().map(function(p){var f=iqForecast(p);return {name:p.name,class:p.cls,status:p.status,stock:p.stock,reorder_point:p.rop,safety_stock:p.ss,eoq:p.eoq,order_qty:iqOrderQty(p),lead_time_days:iqLead(p),daily_demand:iqD(p),days_cover:Math.round(iqCover(p)*10)/10,cost:p.cost,sell:p.sell,margin_pct:p.sell>0?Math.round((p.sell-p.cost)/p.sell*100):0,forecast_next_day:f.forecast,forecast_trend:f.trend,forecast_accuracy_pct:f.acc};})
     .sort(function(a,b){return (rank[a.status]||9)-(rank[b.status]||9);});var intel=decisionIntel();
     return {decision_intel:intel?{inventory_health:intel.health,grade:intel.grade,sub_scores:intel.sub,revenue_at_risk:intel.revAtRisk,capital_locked:intel.invValue,recoverable_capital:intel.recoverable,service_level_pct:intel.serviceLevel,inventory_turnover:intel.turnover,forecast_accuracy_pct:intel.forecastAcc}:null,total_skus:skus.length,skus:skus.slice(0,25)};}
   function strip(t){t=(t||'').trim();if(t.indexOf('```')===0)t=t.replace(/^```(json)?/i,'').replace(/```$/,'').trim();var s=t.indexOf('{'),e=t.lastIndexOf('}');return s<0||e<0?t:t.slice(s,e+1);}
@@ -1408,11 +1343,11 @@ window.addEventListener('storage',function(e){
     var url=AI_CFG.proxy?AI_CFG.proxy.replace(/\/$/,''):AI_CFG.baseUrl+'/chat/completions';var hd={'Content-Type':'text/plain;charset=UTF-8'};if(!AI_CFG.proxy)hd.Authorization='Bearer '+AI_CFG.apiKey;
     fetch(url,{method:'POST',headers:hd,body:JSON.stringify({model:AI_CFG.model,temperature:0.3,max_tokens:1800,messages:[{role:'system',content:SYS},{role:'user',content:'Analyze this inventory snapshot and return the diagnostic JSON.\n'+JSON.stringify(payload(),null,2)}]})})
      .then(function(r){return r.text().then(function(t){if(!r.ok)throw new Error('Provider '+r.status+': '+t.slice(0,160));return t;});})
-     .then(function(t){var j=JSON.parse(t);var c=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'';render(JSON.parse(strip(c)));})
+     .then(function(t){var j=JSON.parse(t);var c=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'';render(iqAiClean(JSON.parse(strip(c))));})
      .catch(function(err){out.innerHTML='<div style="color:#F43F5E;font-size:12px">'+esc(err.message)+'</div>';})
      .then(function(){b.disabled=false;b.textContent='✦  Regenerate Plan';});
   };
-  function reorderPlan(){return getProds().filter(function(p){return p.stock<=p.rop;}).map(function(p){var qty=p.eoq||Math.max(1,(p.rop*2)-p.stock);var dd=p.forecast||p.demand||1;return {name:p.name,ico:p.ico||'📦',qty:qty,cost:Math.round(qty*(p.cost||0)),supplier:p.supplier&&p.supplier!=='—'?p.supplier:'',cover:dd>0?Math.round(p.stock/dd*10)/10:null};}).sort(function(a,b){return (a.cover==null?99:a.cover)-(b.cover==null?99:b.cover);});}
+  function reorderPlan(){return getProds().filter(iqShouldOrder).map(function(p){var qty=iqOrderQty(p);return {name:p.name,ico:p.ico||'📦',qty:qty,cost:Math.round(qty*(p.cost||0)),supplier:p.supplier&&p.supplier!=='—'?p.supplier:'',cover:Math.round(iqCover(p)*10)/10};}).sort(function(a,b){return (a.cover==null?99:a.cover)-(b.cover==null?99:b.cover);});}
   window.aiCopyOrder=function(){var plan=reorderPlan();if(!plan.length)return;var total=plan.reduce(function(a,p){return a+p.cost;},0);var txt='InventoryIQ — Reorder List\n'+new Date().toLocaleDateString()+'\n\n'+plan.map(function(p){return '• '+p.name+' — '+p.qty+' units (₹'+p.cost.toLocaleString('en-IN')+')'+(p.supplier?' · '+p.supplier:'');}).join('\n')+'\n\nEstimated total: ₹'+total.toLocaleString('en-IN');if(navigator.clipboard)navigator.clipboard.writeText(txt);var b=document.getElementById('aiCopyBtn');if(b){b.textContent='✓ Copied';setTimeout(function(){b.textContent='📄 Copy order list';},1500);}};
   var _aiLast=null;
   function aiCall(system,user,onText,onErr){var url=AI_CFG.proxy?AI_CFG.proxy.replace(/\/$/,''):AI_CFG.baseUrl+'/chat/completions';var hd={'Content-Type':'text/plain;charset=UTF-8'};if(!AI_CFG.proxy)hd.Authorization='Bearer '+AI_CFG.apiKey;

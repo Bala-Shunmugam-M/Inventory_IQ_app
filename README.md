@@ -1,4 +1,4 @@
-# InventoryIQ — v8 Patent Edition
+# InventoryIQ — v8.2
 
 > Decision-assistant inventory app for kirana shops and small retailers.
 > Tells you exactly what to order today, instead of showing numbers and formulas.
@@ -15,7 +15,8 @@
 repo/
 ├── docs/
 │   ├── index.html        ← mobile web app (GitHub Pages serves this)
-│   └── dashboard.html    ← desktop manager dashboard
+│   ├── dashboard.html    ← desktop manager dashboard
+│   └── iq-core.js        ← shared by both: data hygiene, forecast, ordering, cloud sync
 ├── mobile/               ← React Native source for Android APK
 │   ├── App.js
 │   ├── app.json
@@ -25,7 +26,7 @@ repo/
 │   └── src/
 │       ├── lib/
 │       │   ├── storage.js   ← engine: EOQ, ROP, ML, AsyncStorage
-│       │   ├── supabase.js  ← cloud sync (works offline too)
+│       │   ├── cloud.js     ← cloud sync client (works offline too)
 │       │   └── theme.js     ← shared design tokens
 │       └── screens/
 │           ├── HomeScreen.js
@@ -33,6 +34,8 @@ repo/
 │           ├── ProductsScreen.js
 │           ├── ForecastScreen.js
 │           └── MoreScreen.js
+├── backend/              ← Cloudflare Worker + D1: store sync API and the Groq-key proxy for the AI Advisor
+├── tests/                ← node tests/check.mjs · node tests/sync.mjs
 ├── .gitignore
 ├── README.md
 └── DEPLOY.md
@@ -54,16 +57,18 @@ All three use the same key namespace (`inventoryiq_v8_*`), so when you sync a ph
 
 ---
 
-## Six patent innovations — all active in this build
+## What's implemented
 
-1. **DSE — Differential Sync Engine** — only changed records transmitted (~80% bandwidth reduction)
-2. **VCR — Vector Clock Resolver** — three-phase deterministic merge for offline-first clients
-3. **PAP — Predictive Analytics Pre-fetcher** — speculative computation during `requestIdleCallback`
-4. **EnergyGuard** — gates pre-fetch via `navigator.getBattery()`
-5. **FieldLock + CLOCK_OFFSET** — NTP-style clock sync with sub-field-level mutex
-6. **SHA-256 Integrity Hash** — Web Crypto API with FNV-1a fallback + auto-rollback
+- **Reorder engine** — reorder point (ROP), economic order quantity (EOQ) and ABC class per product.
+- **Demand forecast** — linear regression blended with a 7-day moving average over daily sales.
+- **Ordering loop** — "Mark ordered" records incoming stock; tap the incoming badge (or Receive) when it arrives.
+  Today's action list uses inventory position (on hand + on order), so ordered items stop nagging.
+- **Cloud sync** (optional) — versioned snapshot sync through `backend/`; devices join with a store link code.
+- **AI Advisor** — LLM explains the locally computed numbers; it never invents them.
 
-See `docs/index.html` "More → Patent Status" or the patent docx in your records for the full 16-claim filing.
+The patent filing describes further mechanisms (DSE delta sync, VCR vector-clock merge,
+EnergyGuard, FieldLock, SHA-256 integrity hash). **They are not implemented in this
+codebase yet**; the in-app Feature Status screen lists them as planned.
 
 ---
 
@@ -93,29 +98,29 @@ The APK link arrives by email in ~10 minutes.
 
 ## Cloud sync (optional)
 
-The app works fully offline. To enable cross-device sync:
+The app works fully offline. Cross-device sync uses the backend in `backend/` — one Cloudflare
+Worker + D1 database that also serves the AI Advisor. Deploy it (see `backend/README.md`), then:
 
-1. Create a free Supabase project at supabase.com
-2. Run this SQL once:
+1. Put the Worker URL in `IQ_API` in `docs/iq-core.js` (web + dashboard) and `API_BASE` in
+   `mobile/src/lib/cloud.js` (APK). It's the same URL as `AI_CFG.proxy`.
+2. Tap **Sync to Cloud** once. That creates your store and shows a **store link code** (`iq1:…`) in Settings.
+3. On another device: **Restore from Cloud** → paste the link code. That device now syncs the same store.
 
-```sql
-create table if not exists inventory_v8 (
-  device_id   text primary key,
-  data        jsonb not null,
-  sales_log   jsonb,
-  updated_at  timestamptz default now()
-);
-alter table inventory_v8 enable row level security;
-create policy "anon read"   on inventory_v8 for select using (true);
-create policy "anon write"  on inventory_v8 for insert with check (true);
-create policy "anon update" on inventory_v8 for update using (true) with check (true);
+If `IQ_API` is empty, **the app still works** — Sync to Cloud saves a snapshot on this device and says so.
+
+**How it stays safe and consistent:** each store has a random 256-bit token (only its SHA-256 is stored
+server-side); the link code carries it, so treat the code like a password. Saves are versioned — if
+another device saved first, the server refuses the stale save, the app merges (union by product, this
+device wins on clashes, sales logs combined) and saves again, so nothing is silently overwritten.
+
+## Checks
+
+```bash
+node tests/check.mjs        # inventory engine + data hygiene
+node tests/sync.mjs         # web client ⇄ real backend, end to end (in-memory SQLite)
+node backend/test/run.mjs   # backend API + AI proxy
+node tests/mobile-parity.mjs # React Native engine gives the same numbers as the web
 ```
-
-3. Paste your project URL and anon key into `mobile/src/lib/supabase.js` (and the matching `<script>` block at the top of `docs/index.html` and `docs/dashboard.html` if you want web sync too)
-
-4. Rebuild — sync now works across devices via Device ID.
-
-If the keys are left empty, **the app still works** — Sync to Cloud silently saves a local snapshot you can roll back to. No errors, no dialogs.
 
 ---
 

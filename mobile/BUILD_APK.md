@@ -80,8 +80,7 @@ For the Play Store, change `"buildType": "apk"` → `"app-bundle"` in `eas.json`
 | Aspect | How it works |
 |---|---|
 | **Local storage** | All inventory data lives in AsyncStorage on the phone — works 100% offline |
-| **Backend URL** | Pre-wired to `https://inventory-ai-51.preview.emergentagent.com` (set in `app.json` → `extra.apiBaseUrl`) |
-| **Change backend** | Edit the URL in `app.json`, then run `eas build` again to produce a new APK |
+| **Cloud sync** | Optional. Deploy `backend/`, set `API_BASE` in `src/lib/cloud.js`, rebuild |
 
 ---
 

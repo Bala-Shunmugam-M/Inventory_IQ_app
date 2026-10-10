@@ -5,7 +5,7 @@
  * Save button persists, decrements stock, recomputes statuses, and writes
  * to the sales log so the dashboard's reports are populated.
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,12 +14,14 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { loadProducts, recordSales } from '../lib/storage';
+import { loadProducts, recordSales, completeDay, localDay } from '../lib/storage';
 import { COLORS, STATUS_COLORS } from '../lib/theme';
 
 export default function SalesScreen({ navigation }) {
   const [products, setProducts] = useState([]);
   const [qty, setQty] = useState({});
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const refresh = useCallback(async () => {
     const list = await loadProducts();
@@ -33,6 +35,7 @@ export default function SalesScreen({ navigation }) {
   }, [navigation, refresh]);
 
   const adjust = (id, delta) => {
+    if (savingRef.current) return;
     const p = products.find((x) => x.id === id);
     if (!p || p.stock === 0) return;
     const cur = qty[id] || 0;
@@ -41,26 +44,58 @@ export default function SalesScreen({ navigation }) {
   };
 
   const setQuick = (id, n) => {
+    if (savingRef.current) return;
     const p = products.find((x) => x.id === id);
     if (!p || p.stock === 0) return;
     setQty({ ...qty, [id]: Math.min(n, p.stock) });
   };
 
-  const reset = () => setQty({});
+  const reset = () => { if (!savingRef.current) setQty({}); };
 
   const save = async () => {
+    if (savingRef.current) return;
     const entered = products.filter((p) => (qty[p.id] || 0) > 0);
     if (!entered.length) return;
-    const entry = await recordSales(qty);
-    if (!entry) return;
-    Alert.alert(
-      '✅ Saved',
-      `Updated ${entry.items} products · ${entry.totalUnits} units · ₹${Math.round(
-        entry.totalProfit,
-      )} profit`,
-      [{ text: 'OK', onPress: () => { setQty({}); refresh(); } }],
-    );
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const entry = await recordSales(qty);
+      if (!entry) return;
+      setQty({});
+      await refresh();
+      Alert.alert('✅ Saved', `Updated ${entry.items} products · ${entry.totalUnits} units · ₹${Math.round(entry.totalProfit)} profit`);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
+
+  const finishDay = () => {
+    if (savingRef.current || !products.length) return;
+    if (products.some((p) => (qty[p.id] || 0) > 0)) {
+      Alert.alert('Save your entries first', 'Save the quantities you entered, then finish the day.');
+      return;
+    }
+    Alert.alert('Finished for today?', 'Products with no sales saved today will be recorded as zero sales. Use this only after entering all of today’s sales.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Finish today', onPress: async () => {
+        if (savingRef.current) return;
+        savingRef.current = true;
+        setSaving(true);
+        try {
+          const count = await completeDay();
+          if (count === null) return;
+          await refresh();
+          Alert.alert('Today is complete', `${count} products recorded with zero sales.`);
+        } finally {
+          savingRef.current = false;
+          setSaving(false);
+        }
+      } },
+    ]);
+  };
+
+  const finished = products.length > 0 && products.every((p) => p.histDay === localDay());
 
   const totals = (() => {
     let units = 0,
@@ -96,20 +131,13 @@ export default function SalesScreen({ navigation }) {
     );
   }
 
-  // Sort: those with quantity entered first, then by status priority
-  const sorted = [...products].sort((a, b) => {
-    const qa = qty[a.id] || 0;
-    const qb = qty[b.id] || 0;
-    if (qa > 0 && qb === 0) return -1;
-    if (qb > 0 && qa === 0) return 1;
-    const o = { critical: 0, order: 1, watch: 2, good: 3 };
-    return (o[a.status] || 3) - (o[b.status] || 3);
-  });
+  // Keep products in a stable position while the merchant enters quantities.
+  const sorted = products;
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Today's Sales</Text>
           <Text style={styles.headerSub}>Tap + or − to record units sold</Text>
         </View>
@@ -118,7 +146,8 @@ export default function SalesScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 120 }}>
+      <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 260 }}>
+        <Text style={styles.entryNote}>Save sales as you go. Other products stay unlogged. When all today's sales are saved, tap “Finished entering today's sales” — even on a day with no sales.</Text>
         {sorted.map((p) => {
           const q = qty[p.id] || 0;
           const isOut = p.stock === 0;
@@ -148,10 +177,13 @@ export default function SalesScreen({ navigation }) {
                     <TouchableOpacity
                       style={[styles.ctrlBtn, styles.ctrlMinus]}
                       onPress={() => adjust(p.id, -1)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`One fewer ${p.name} sold`}
+                      disabled={q === 0}
                     >
                       <Text style={styles.ctrlMinusText}>−</Text>
                     </TouchableOpacity>
-                    <View style={styles.qtyDisplay}>
+                    <View style={styles.qtyDisplay} accessible accessibilityLabel={`${q} units of ${p.name} sold`} accessibilityLiveRegion="polite">
                       <Text
                         style={[
                           styles.qtyValue,
@@ -165,29 +197,33 @@ export default function SalesScreen({ navigation }) {
                     <TouchableOpacity
                       style={[styles.ctrlBtn, styles.ctrlPlus]}
                       onPress={() => adjust(p.id, 1)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`One more ${p.name} sold`}
+                      disabled={q >= p.stock}
                     >
                       <Text style={styles.ctrlPlusText}>+</Text>
                     </TouchableOpacity>
                   </View>
 
                   <View style={styles.quickRow}>
-                    <Text style={styles.quickLabel}>Quick</Text>
-                    {[5, 10, 20].map((n) => (
+                    {[5, 10, 20].filter((n, i, ns) => i === 0 || Math.min(n, p.stock) !== Math.min(ns[i - 1], p.stock)).map((n) => (
                       <TouchableOpacity
                         key={n}
                         style={[
                           styles.quickBtn,
-                          q === n && styles.quickBtnActive,
+                          q === Math.min(n, p.stock) && styles.quickBtnActive,
                         ]}
                         onPress={() => setQuick(p.id, n)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Set ${p.name} sales to ${Math.min(n, p.stock)}`}
                       >
                         <Text
                           style={[
                             styles.quickBtnText,
-                            q === n && { color: '#fff' },
+                            q === Math.min(n, p.stock) && { color: '#fff' },
                           ]}
                         >
-                          +{n}
+                          Set {Math.min(n, p.stock)}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -210,7 +246,7 @@ export default function SalesScreen({ navigation }) {
 
       {/* Save banner */}
       <View style={styles.saveBanner}>
-        <View style={{ flex: 1 }}>
+        <View>
           <Text style={styles.saveBannerLabel}>
             {totals.items > 0
               ? `${totals.items} entered · ${totals.units} units`
@@ -225,16 +261,24 @@ export default function SalesScreen({ navigation }) {
         <TouchableOpacity
           style={[
             styles.saveBtn,
-            totals.items === 0 && styles.saveBtnDisabled,
+            (totals.items === 0 || saving) && styles.saveBtnDisabled,
           ]}
           onPress={save}
-          disabled={totals.items === 0}
+          disabled={totals.items === 0 || saving}
         >
           <Text style={styles.saveBtnText}>
             {totals.items > 0
               ? `✅ Save ${totals.items}`
               : 'Save & Update Stock'}
           </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.finishBtn, (saving || (finished && totals.items === 0)) && { opacity: 0.6 }]}
+          accessibilityRole="button"
+          disabled={saving || (finished && totals.items === 0)}
+          onPress={finishDay}
+        >
+          <Text style={styles.finishBtnText}>{finished && totals.items === 0 ? "✓ Today's sales are complete" : "Finished entering today's sales"}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -258,7 +302,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   emptySub: {
-    fontSize: 13,
+    fontSize: 15,
     color: COLORS.muted,
     textAlign: 'center',
     marginBottom: 20,
@@ -280,9 +324,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  headerTitle: { fontSize: 16, fontWeight: '800', color: COLORS.ink },
-  headerSub: { fontSize: 11, color: COLORS.muted, fontWeight: '600' },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: COLORS.ink },
+  headerSub: { fontSize: 14, color: COLORS.muted, fontWeight: '600' },
+  entryNote: { fontSize: 14, lineHeight: 21, color: COLORS.muted, marginBottom: 14 },
   resetBtn: {
+    minHeight: 44,
+    justifyContent: 'center',
     backgroundColor: COLORS.surface,
     paddingHorizontal: 12,
     paddingVertical: 7,
@@ -300,8 +347,8 @@ const styles = StyleSheet.create({
   cardActive: { borderColor: COLORS.green, borderWidth: 2 },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   icon: { fontSize: 24 },
-  name: { fontSize: 13, fontWeight: '700', color: COLORS.ink },
-  stockText: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  name: { fontSize: 17, fontWeight: '700', color: COLORS.ink },
+  stockText: { fontSize: 14, fontWeight: '600', marginTop: 2 },
   ctrlRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -309,8 +356,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   ctrlBtn: {
-    width: 44,
-    height: 44,
+    width: 56,
+    height: 56,
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
@@ -321,7 +368,7 @@ const styles = StyleSheet.create({
   ctrlPlusText: { fontSize: 22, fontWeight: '800', color: '#fff' },
   qtyDisplay: { flex: 1, alignItems: 'center' },
   qtyValue: { fontSize: 28, fontWeight: '800', color: COLORS.ink },
-  qtyUnit: { fontSize: 10, fontWeight: '600', color: COLORS.muted },
+  qtyUnit: { fontSize: 14, fontWeight: '600', color: COLORS.muted },
   quickRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -335,6 +382,8 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   quickBtn: {
+    minHeight: 44,
+    justifyContent: 'center',
     flex: 1,
     backgroundColor: COLORS.surface,
     paddingVertical: 7,
@@ -342,7 +391,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   quickBtnActive: { backgroundColor: COLORS.green },
-  quickBtnText: { fontSize: 12, fontWeight: '700', color: COLORS.ink2 },
+  quickBtnText: { fontSize: 15, fontWeight: '700', color: COLORS.ink2 },
   summary: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -352,8 +401,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
-  summaryEntered: { fontSize: 11, fontWeight: '700', color: COLORS.green },
-  summaryProfit: { fontSize: 10, fontWeight: '600', color: COLORS.muted },
+  summaryEntered: { fontSize: 14, fontWeight: '700', color: COLORS.green },
+  summaryProfit: { fontSize: 13, fontWeight: '600', color: COLORS.muted },
   saveBanner: {
     position: 'absolute',
     bottom: 0,
@@ -362,13 +411,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
-    flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     padding: 14,
     paddingBottom: 22,
     gap: 12,
   },
-  saveBannerLabel: { fontSize: 12, fontWeight: '700', color: COLORS.ink2 },
+  saveBannerLabel: { fontSize: 14, fontWeight: '700', color: COLORS.ink2 },
   saveBannerProfit: {
     fontSize: 14,
     fontWeight: '800',
@@ -376,11 +424,16 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   saveBtn: {
+    minHeight: 52,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: COLORS.ink,
     paddingHorizontal: 16,
     paddingVertical: 11,
     borderRadius: 10,
   },
   saveBtnDisabled: { backgroundColor: COLORS.light },
-  saveBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  saveBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  finishBtn: { minHeight: 48, padding: 12, borderRadius: 10, backgroundColor: COLORS.surface, justifyContent: 'center', alignItems: 'center' },
+  finishBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.ink2, textAlign: 'center' },
 });
