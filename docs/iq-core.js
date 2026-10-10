@@ -6,7 +6,7 @@
    URL of your deployed backend/ Worker — the same one that serves the AI Advisor,
    e.g. 'https://inventoryiq-llm-proxy.<you>.workers.dev'. Leave empty to keep
    everything on this device. */
-var IQ_API = '';
+var IQ_API = 'https://inventoryiq-llm-proxy.balashunmugamruthran.workers.dev';
 
 function iqCloudReady() { return !!IQ_API; }
 

@@ -6,23 +6,30 @@ One Worker that:
   several phones / the desktop dashboard can share one store, and
 - proxies the AI Advisor to Groq so the API key never ships in the app.
 
-It replaces the old `proxy/` worker and keeps its name (`inventoryiq-llm-proxy`), so the
-already-deployed `*.workers.dev` URL and its `POST /` AI endpoint keep working.
+It keeps the old proxy's name (`inventoryiq-llm-proxy`) and its `POST /` AI endpoint.
+
+Live: `https://inventoryiq-llm-proxy.balashunmugamruthran.workers.dev` (Cloudflare account
+`7b695154…`, D1 database `inventoryiq`, set in `wrangler.toml`). The web pages (`IQ_API`, AI proxy
+URLs) and the mobile app (`API_BASE`) point here.
 
 ## Deploy
 
-```bash
-npm i -g wrangler
-wrangler login
-cd backend
+Wrangler is a dev dependency of this folder. On Windows `cmd`, use `cd /d` to change drives.
 
-wrangler d1 create inventoryiq            # copy the printed database_id into wrangler.toml
-wrangler d1 execute inventoryiq --remote --file=schema.sql
-wrangler secret put GROQ_API_KEY          # paste gsk_... when prompted
-wrangler deploy
+```bash
+cd backend
+npm install
+npx wrangler login                            # the Cloudflare account above
+npx wrangler deploy                           # redeploy after changing src/
 ```
 
-Wrangler prints `https://inventoryiq-llm-proxy.<you>.workers.dev`.
+One-time setup for a fresh account (already done for the live Worker):
+
+```bash
+npx wrangler d1 create inventoryiq            # copy the printed database_id into wrangler.toml
+npx wrangler d1 execute inventoryiq --remote --file=schema.sql
+npx wrangler secret put GROQ_API_KEY          # paste gsk_... when prompted
+```
 
 ## Test
 

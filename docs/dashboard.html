@@ -525,7 +525,7 @@ function renderAiInsightsView(){
 }
 function genAiReport(){var box=document.getElementById('aiReportBox'),b=document.getElementById('aiGenBtn');if(!b)return;
   var d=cmdIntel();if(!d)return;b.disabled=true;b.textContent='Generating…';box.innerHTML='<div style="font-size:12px;color:var(--muted)">Thinking…</div>';
-  var cfg={proxy:'https://inventoryiq-llm-proxy.bala-inventoryiq.workers.dev',model:'llama-3.3-70b-versatile'};
+  var cfg={proxy:'https://inventoryiq-llm-proxy.balashunmugamruthran.workers.dev',model:'llama-3.3-70b-versatile'};
   var pl={inventory_health:d.health,grade:d.grade,revenue_at_risk:d.revAtRisk,capital_locked:d.invValue,recoverable:d.recoverable,service_level_pct:d.serviceLevel,forecast_accuracy_pct:d.forecastAcc,sub_scores:d.sub.map(function(s){return {factor:s[0],weight:s[2],score:s[3]};}),top_risks:d.risks,opportunities:d.opps};
   fetch(cfg.proxy.replace(/\/$/,''),{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({model:cfg.model,temperature:0.4,max_tokens:700,messages:[{role:'system',content:'You are InventoryIQ AI, a supply-chain analyst. Write a concise executive report (~120 words) in plain text with short labelled sections: Situation, Why, Risks, Opportunities, Actions. Cite the real numbers. No markdown.'},{role:'user',content:'Snapshot:\n'+JSON.stringify(pl,null,2)}]})})
    .then(function(r){return r.text();}).then(function(t){var j=JSON.parse(t);var c=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||'').trim();box.innerHTML='<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:13px;color:var(--ink2);line-height:21px;white-space:pre-wrap">'+c.replace(/[<>]/g,'')+'</div>';b.disabled=false;b.textContent='Regenerate Report';})
@@ -693,7 +693,7 @@ function exportReview(){
 
 /* ── AI Inventory Consultant ── */
 var _consult=[];
-var IQ_PROXY='https://inventoryiq-llm-proxy.bala-inventoryiq.workers.dev';
+var IQ_PROXY='https://inventoryiq-llm-proxy.balashunmugamruthran.workers.dev';
 var CONSULT_Q=['Why is profit decreasing?','Which products should I reorder?','Why is inventory health low?','Show my slow-moving items','Where is my cash tied up?'];
 function consultCtx(){
   var d=cmdIntel();
@@ -1282,7 +1282,7 @@ window.addEventListener('storage',function(e){
     baseUrl: 'https://api.groq.com/openai/v1',
     model:   'llama-3.3-70b-versatile',
     apiKey:  '',   // empty — key lives in the Cloudflare Worker
-    proxy:   'https://inventoryiq-llm-proxy.bala-inventoryiq.workers.dev',
+    proxy:   'https://inventoryiq-llm-proxy.balashunmugamruthran.workers.dev',
     storageKey: 'inventoryiq_v8_data'
   };
   var SYS='You are InventoryIQ AI, a senior inventory and supply-chain analyst for a retail/FMCG store. '

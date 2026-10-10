@@ -15,7 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { KEYS, loadProducts, saveProducts, loadSalesLog, pushSyncSnapshot, normalize, num, SYNC, loadEvents, saveEvents, trimEvents, logDailySale, localDay, uid } from './storage';
 
 // Your deployed backend URL, e.g. 'https://inventoryiq-llm-proxy.<you>.workers.dev'
-export const API_BASE = '';
+export const API_BASE = 'https://inventoryiq-llm-proxy.balashunmugamruthran.workers.dev';
 const STORE_KEY = 'iq_store';
 const BASE_KEY = 'iq_sync_base';
 

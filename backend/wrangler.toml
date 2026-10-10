@@ -2,7 +2,7 @@
 name = "inventoryiq-llm-proxy"
 main = "src/index.js"
 compatibility_date = "2024-11-01"
-account_id = "3ff2aa59d592dda71799cca963c855a9"
+account_id = "7b6951541471e1393af0f6a0657264f2"
 
 # Secret (do NOT put the key here — set it with:  wrangler secret put GROQ_API_KEY)
 # The key is then available as env.GROQ_API_KEY inside src/index.js
@@ -22,4 +22,4 @@ namespace_id = "1001"
 [[d1_databases]]
 binding = "DB"
 database_name = "inventoryiq"
-database_id = "PASTE-DATABASE-ID-FROM-wrangler-d1-create"
+database_id = "37f864d1-e80b-4b82-9939-1a233b0b9f4e"
