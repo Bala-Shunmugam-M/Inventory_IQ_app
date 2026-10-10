@@ -5,7 +5,7 @@
  * Save button persists, decrements stock, recomputes statuses, and writes
  * to the sales log so the dashboard's reports are populated.
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,12 +14,14 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { loadProducts, recordSales } from '../lib/storage';
+import { loadProducts, recordSales, completeDay, localDay } from '../lib/storage';
 import { COLORS, STATUS_COLORS } from '../lib/theme';
 
 export default function SalesScreen({ navigation }) {
   const [products, setProducts] = useState([]);
   const [qty, setQty] = useState({});
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const refresh = useCallback(async () => {
     const list = await loadProducts();
@@ -33,6 +35,7 @@ export default function SalesScreen({ navigation }) {
   }, [navigation, refresh]);
 
   const adjust = (id, delta) => {
+    if (savingRef.current) return;
     const p = products.find((x) => x.id === id);
     if (!p || p.stock === 0) return;
     const cur = qty[id] || 0;
@@ -41,26 +44,58 @@ export default function SalesScreen({ navigation }) {
   };
 
   const setQuick = (id, n) => {
+    if (savingRef.current) return;
     const p = products.find((x) => x.id === id);
     if (!p || p.stock === 0) return;
     setQty({ ...qty, [id]: Math.min(n, p.stock) });
   };
 
-  const reset = () => setQty({});
+  const reset = () => { if (!savingRef.current) setQty({}); };
 
   const save = async () => {
+    if (savingRef.current) return;
     const entered = products.filter((p) => (qty[p.id] || 0) > 0);
     if (!entered.length) return;
-    const entry = await recordSales(qty);
-    if (!entry) return;
-    Alert.alert(
-      '✅ Saved',
-      `Updated ${entry.items} products · ${entry.totalUnits} units · ₹${Math.round(
-        entry.totalProfit,
-      )} profit`,
-      [{ text: 'OK', onPress: () => { setQty({}); refresh(); } }],
-    );
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const entry = await recordSales(qty);
+      if (!entry) return;
+      setQty({});
+      await refresh();
+      Alert.alert('✅ Saved', `Updated ${entry.items} products · ${entry.totalUnits} units · ₹${Math.round(entry.totalProfit)} profit`);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
+
+  const finishDay = () => {
+    if (savingRef.current || !products.length) return;
+    if (products.some((p) => (qty[p.id] || 0) > 0)) {
+      Alert.alert('Save your entries first', 'Save the quantities you entered, then finish the day.');
+      return;
+    }
+    Alert.alert('Finished for today?', 'Products with no sales saved today will be recorded as zero sales. Use this only after entering all of today’s sales.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Finish today', onPress: async () => {
+        if (savingRef.current) return;
+        savingRef.current = true;
+        setSaving(true);
+        try {
+          const count = await completeDay();
+          if (count === null) return;
+          await refresh();
+          Alert.alert('Today is complete', `${count} products recorded with zero sales.`);
+        } finally {
+          savingRef.current = false;
+          setSaving(false);
+        }
+      } },
+    ]);
+  };
+
+  const finished = products.length > 0 && products.every((p) => p.histDay === localDay());
 
   const totals = (() => {
     let units = 0,
@@ -111,8 +146,8 @@ export default function SalesScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 190 }}>
-        <Text style={styles.entryNote}>Check every product before saving. Quantities left blank currently count as zero for today.</Text>
+      <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 260 }}>
+        <Text style={styles.entryNote}>Save sales as you go. Other products stay unlogged. When all today's sales are saved, tap “Finished entering today's sales” — even on a day with no sales.</Text>
         {sorted.map((p) => {
           const q = qty[p.id] || 0;
           const isOut = p.stock === 0;
@@ -226,16 +261,24 @@ export default function SalesScreen({ navigation }) {
         <TouchableOpacity
           style={[
             styles.saveBtn,
-            totals.items === 0 && styles.saveBtnDisabled,
+            (totals.items === 0 || saving) && styles.saveBtnDisabled,
           ]}
           onPress={save}
-          disabled={totals.items === 0}
+          disabled={totals.items === 0 || saving}
         >
           <Text style={styles.saveBtnText}>
             {totals.items > 0
               ? `✅ Save ${totals.items}`
               : 'Save & Update Stock'}
           </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.finishBtn, (saving || (finished && totals.items === 0)) && { opacity: 0.6 }]}
+          accessibilityRole="button"
+          disabled={saving || (finished && totals.items === 0)}
+          onPress={finishDay}
+        >
+          <Text style={styles.finishBtnText}>{finished && totals.items === 0 ? "✓ Today's sales are complete" : "Finished entering today's sales"}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -391,4 +434,6 @@ const styles = StyleSheet.create({
   },
   saveBtnDisabled: { backgroundColor: COLORS.light },
   saveBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  finishBtn: { minHeight: 48, padding: 12, borderRadius: 10, backgroundColor: COLORS.surface, justifyContent: 'center', alignItems: 'center' },
+  finishBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.ink2, textAlign: 'center' },
 });

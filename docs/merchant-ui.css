@@ -75,6 +75,7 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px 
 .merchant-mobile .clr-btn { min-width: 44px; min-height: 44px; font-size: 14px; }
 .merchant-mobile .save-btn { min-height: 54px; font-size: 16px; }
 .merchant-mobile .save-footer { padding-bottom: 12px; }
+.merchant-mobile .finish-day { width: 100%; margin-top: 8px; font-size: 14px; }
 .merchant-mobile .toast { max-width: calc(100% - 24px); white-space: normal; font-size: 14px; text-align: center; }
 .merchant-mobile input, .merchant-mobile select { font-size: 16px !important; min-height: 44px; }
 .merchant-desktop .act-btn, .merchant-desktop .tb-btn, .merchant-desktop .btn { min-height: 44px; font-size: 14px; }

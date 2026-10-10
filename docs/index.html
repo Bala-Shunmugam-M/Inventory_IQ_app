@@ -794,13 +794,14 @@ html,body{
     <div class="sbp"><span class="sbpt" id="sbPf">💰 ₹0</span></div>
   </div>
   <div class="scroll" style="padding-top:8px">
-    <p class="merchant-note">Tap + or − for each product sold. Check every product before saving: blank quantities currently count as zero for today.</p>
+    <p class="merchant-note">Save sales as you go. Other products stay unlogged. When all today's sales are saved, tap “Finished entering today's sales” — even on a day with no sales.</p>
     <div class="si-list" id="siList"></div>
     <div style="height:10px"></div>
   </div>
   <div class="save-footer">
     <div class="sf-sr"><span class="sf-cnt" id="sfCnt">Enter units sold for each product</span><span class="sf-pft" id="sfPft"></span></div>
     <button class="save-btn dis" id="sfBtn" onclick="doSave()"><span id="sfIco">📝</span> <span id="sfTxt">Save &amp; Update Stock</span> <span id="sfArr"></span></button>
+    <button type="button" class="merchant-button secondary finish-day" id="finishDayBtn" onclick="finishSalesDay()">Finished entering today's sales</button>
   </div>
   <div class="saved-ov" id="savedOv">
     <div style="font-size:52px">✅</div>
@@ -1915,6 +1916,11 @@ function updateSaveBanner(){
   document.getElementById('sbUn').textContent=units;
   document.getElementById('sbPf').textContent='💰 ₹'+profit;
   var btn=document.getElementById('sfBtn');
+  btn.disabled=!entered.length;
+  var finished=PRODS.length>0&&PRODS.every(function(p){return p.histDay===iqToday();});
+  var finish=document.getElementById('finishDayBtn');
+  finish.disabled=!PRODS.length||(finished&&!entered.length);
+  finish.textContent=finished&&!entered.length?"✓ Today's sales are complete":"Finished entering today's sales";
   if(!entered.length){
     btn.className='save-btn dis';document.getElementById('sfIco').textContent='📝';document.getElementById('sfTxt').textContent='Save & Update Stock';document.getElementById('sfArr').textContent='';
     document.getElementById('sfCnt').innerHTML='Enter units sold for each product';document.getElementById('sfPft').textContent='';
@@ -1924,10 +1930,22 @@ function updateSaveBanner(){
   }
 }
 
+function finishSalesDay(){
+  if(!PRODS.length)return;
+  if(PRODS.some(function(p){return (QTY[p.id]||0)>0;})){
+    toast('Save the quantities you entered first. Then finish the day.');return;
+  }
+  iqUiConfirm('Finished for today?', 'Products with no sales saved today will be recorded as zero sales. Use this only after entering all of today’s sales.', 'Finish today', function(){
+    var count=iqCompleteDay(PRODS);
+    recomputeAllStatus();saveProds();renderSales();
+    toast('Today is complete. '+count+' products recorded with zero sales.','green');
+  });
+}
+
 function doSave(){
   var entered=PRODS.filter(function(p){return (QTY[p.id]||0)>0;});
   if(!entered.length)return;
-  // every product gets today's bucket: unsold = a confirmed zero day, sold out = censored
+  // Only entered products get today's bucket; finishing the day confirms zeros for the rest.
   var lines=iqRecordDay(PRODS,QTY);
   var units=0,profit=0,revenue=0;
   lines.forEach(function(l){units+=l.qty;profit+=l.profit;revenue+=l.revenue;});
@@ -1945,6 +1963,7 @@ function doSave(){
     totalRevenue:revenue,
     lines:lines
   });
+  QTY={}; // A saved entry must not be submitted again while the success message is shown.
   document.getElementById('savedMsg').textContent='Updated '+entered.length+' products · '+units+' units · ₹'+profit;
   var ov=document.getElementById('savedOv');ov.className='saved-ov show';
   setTimeout(function(){ov.className='saved-ov';QTY={};renderSales();},2200);

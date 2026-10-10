@@ -1,5 +1,12 @@
 # Handoff — sync & demand fixes from external review #2
 
+> **UI integration completed in PR #2:** web and native sales screens now call the
+> complete-day API after confirmation, require pending quantities to be saved first,
+> and explain partial entry correctly. Mobile displays sync recount conflicts and
+> keeps product forms open when add/edit/delete returns `null`. Handler regression
+> checks: `node tests/ui-workflows.mjs`; web completion/cancellation and reload checked
+> at 320px. Native device/emulator testing remains outstanding.
+
 > **Status: tasks 1–8 implemented** (see the commit after `e49adbe`). All four suites
 > pass; both pages were smoke-tested in a browser with no new console errors.
 >

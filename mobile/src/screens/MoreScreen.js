@@ -52,6 +52,14 @@ export default function MoreScreen({ navigation }) {
       Alert.alert('Sync failed', result.reason || 'Unknown error');
       return;
     }
+    const conflicts = result.conflicts || [];
+    if (conflicts.length) {
+      Alert.alert('Synced — please check stock', conflicts.map((c) =>
+        `Stock for ${c.name} differed between devices — kept ${c.kept}, please recount.`
+      ).join('\n\n'));
+      await refresh();
+      return;
+    }
     Alert.alert(
       '✅ Synced',
       result.mode === 'cloud'

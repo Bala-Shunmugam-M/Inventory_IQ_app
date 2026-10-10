@@ -137,9 +137,10 @@ export default function ProductsScreen({ navigation, route }) {
       Alert.alert('Invalid sell price', 'Sell price must be greater than 0.');
       return;
     }
+    let saved;
     if (editingId) {
       const built = buildProduct({ ...form, id: editingId });
-      await updateProduct(editingId, {
+      saved = await updateProduct(editingId, {
         name: built.name,
         ico: built.ico,
         stock: built.stock,
@@ -154,8 +155,9 @@ export default function ProductsScreen({ navigation, route }) {
         max: built.max,
       });
     } else {
-      await addProduct(form);
+      saved = await addProduct(form);
     }
+    if (saved === null) return; // Keep the form and its draft when storage refuses the save.
     await refresh();
     close();
   };
@@ -169,7 +171,8 @@ export default function ProductsScreen({ navigation, route }) {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          await deleteProduct(editingId);
+          const deleted = await deleteProduct(editingId);
+          if (deleted === null) return;
           await refresh();
           close();
         },

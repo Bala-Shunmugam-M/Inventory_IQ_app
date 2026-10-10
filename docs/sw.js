@@ -1,5 +1,5 @@
 /* InventoryIQ service worker — minimal offline shell for PWA / APK packaging */
-var CACHE='iq-v4-merchant';
+var CACHE='iq-v5-complete-day';
 var CORE=['index.html','dashboard.html','iq-core.js','merchant-ui.css','merchant-ui.js','manifest.webmanifest'];
 self.addEventListener('install',function(e){
   self.skipWaiting();
