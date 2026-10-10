@@ -9,25 +9,25 @@ export const COLORS = {
   border: '#DDE3F0',
   ink: '#0D1226',
   ink2: '#2A3456',
-  muted: '#7B849E',
+  muted: '#59657C',
   light: '#C2CADF',
   blue: '#2563EB',
   blueLight: '#EEF3FF',
   red: '#DC2626',
   redLight: '#FEF2F2',
-  amber: '#D97706',
+  amber: '#92400E',
   amberLight: '#FFFBEB',
-  green: '#059669',
+  green: '#047857',
   greenLight: '#ECFDF5',
   purple: '#7C3AED',
   purpleLight: '#F5F3FF',
 };
 
 export const STATUS_LABEL = {
-  critical: 'CRITICAL',
-  order: 'ORDER NOW',
-  watch: 'WATCH',
-  good: 'GOOD',
+  critical: '⚠ Stock running low',
+  order: '↗ Time to buy',
+  watch: '◷ Check soon',
+  good: '✓ Stock looks good',
 };
 
 export const STATUS_COLORS = {

@@ -14,6 +14,7 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import {
   loadProducts,
@@ -42,9 +43,11 @@ export default function HomeScreen({ navigation }) {
     return unsub;
   }, [navigation, refresh]);
 
-  const order = async (id) => {
-    await markOrdered(id);
-    await refresh();
+  const order = (p) => {
+    Alert.alert('Record this order?', 'Use this after ordering ' + orderQty(p) + ' units of ' + p.name + ' from your supplier. This does not send an order.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'I placed this order', onPress: async () => { await markOrdered(p.id); await refresh(); } },
+    ]);
   };
 
   const handleLoadDemo = async () => {
@@ -56,7 +59,7 @@ export default function HomeScreen({ navigation }) {
   const urgent = products.filter(needsAction);
   const sortedUrgent = urgent.sort((a, b) => {
     const order = { critical: 0, order: 1, watch: 2 };
-    return (order[a.status] || 3) - (order[b.status] || 3);
+    return (order[a.status] ?? 3) - (order[b.status] ?? 3);
   });
 
   if (!products.length) {
@@ -93,6 +96,22 @@ export default function HomeScreen({ navigation }) {
         <RefreshControl refreshing={refreshing} onRefresh={refresh} />
       }
     >
+      <Text style={styles.pageTitle}>Your shop today</Text>
+      <View style={styles.tasks}>
+        {[
+          ['📝', 'Enter sales', 'Record what you sold today', 'Sales', {}],
+          ['📦', 'Check stock', 'Find a product or add a new one', 'Products', { filter: 'all' }],
+          ['📥', 'Stock arrived', 'Check and receive your deliveries', 'Products', { filter: 'incoming' }],
+        ].map(([icon, title, subtitle, screen, params], i) => (
+          <TouchableOpacity key={title} accessibilityRole="button" style={[styles.task, i === 0 && styles.taskPrimary]} onPress={() => navigation.navigate(screen, params)}>
+            <Text style={styles.taskIcon}>{icon}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.taskTitle, i === 0 && { color: '#fff' }]}>{title}</Text>
+              <Text style={[styles.taskSub, i === 0 && { color: '#e1eaff' }]}>{subtitle}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </View>
       {/* Health summary card */}
       <View style={styles.heroCard}>
         <Text style={styles.heroLabel}>Products in good stock</Text>
@@ -171,7 +190,7 @@ export default function HomeScreen({ navigation }) {
             <View style={{ flex: 1 }}>
               <Text style={styles.actionName}>{p.name}</Text>
               <Text style={styles.actionMeta}>
-                Stock: {p.stock} · ROP: {p.rop} · Order {orderQty(p)} units
+                On the shelf: {p.stock} units{'\n'}Suggested purchase: {orderQty(p)} units
                 {p.incoming > 0 ? ` · ${p.incoming} on order` : ''}
               </Text>
             </View>
@@ -192,19 +211,22 @@ export default function HomeScreen({ navigation }) {
             </View>
           </View>
           <View style={styles.actionBtnRow}>
+            {orderQty(p) > 0 && (
             <TouchableOpacity
               style={styles.actionDismiss}
-              onPress={() => order(p.id)}
+              accessibilityRole="button"
+              onPress={() => order(p)}
             >
-              <Text style={styles.actionDismissText}>✓ Mark Ordered</Text>
+              <Text style={styles.actionDismissText}>✓ I placed this order</Text>
             </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.actionView}
               onPress={() =>
                 navigation.navigate('Products', { focusId: p.id })
               }
             >
-              <Text style={styles.actionViewText}>View →</Text>
+              <Text style={styles.actionViewText}>Edit product</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -214,6 +236,13 @@ export default function HomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  pageTitle: { fontSize: 26, fontWeight: '800', color: COLORS.ink, marginBottom: 16 },
+  tasks: { gap: 10, marginBottom: 20 },
+  task: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.border, borderRadius: 14, padding: 16, minHeight: 76 },
+  taskPrimary: { backgroundColor: COLORS.blue, borderColor: COLORS.blue },
+  taskIcon: { fontSize: 28 },
+  taskTitle: { fontSize: 18, fontWeight: '700', color: COLORS.ink },
+  taskSub: { fontSize: 14, color: COLORS.muted, marginTop: 4 },
   container: { flex: 1, backgroundColor: COLORS.bg },
   empty: {
     flex: 1,
@@ -316,22 +345,30 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 8,
   },
-  actionTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  actionTop: { flexWrap: 'wrap', flexDirection: 'row', alignItems: 'center', gap: 12 },
   actionIcon: { fontSize: 26 },
-  actionName: { fontSize: 13, fontWeight: '700', color: COLORS.ink },
-  actionMeta: { fontSize: 11, color: COLORS.muted, marginTop: 2 },
-  statusPill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  statusPillText: { fontSize: 10, fontWeight: '700' },
-  actionBtnRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  actionName: { fontSize: 17, fontWeight: '700', color: COLORS.ink },
+  actionMeta: { fontSize: 14, lineHeight: 22, color: COLORS.muted, marginTop: 2 },
+  statusPill: { width: '100%', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  statusPillText: { fontSize: 14, fontWeight: '700' },
+  actionBtnRow: { flexWrap: 'wrap', flexDirection: 'row', gap: 8, marginTop: 12 },
   actionDismiss: {
+    minWidth: 135,
+    minHeight: 48,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
     flex: 1,
     backgroundColor: COLORS.greenLight,
     paddingVertical: 9,
     borderRadius: 8,
     alignItems: 'center',
   },
-  actionDismissText: { color: COLORS.green, fontWeight: '700', fontSize: 12 },
+  actionDismissText: { color: COLORS.green, fontWeight: '700', fontSize: 15 },
   actionView: {
+    minWidth: 135,
+    minHeight: 48,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
     flex: 1,
     backgroundColor: COLORS.ink,
     paddingVertical: 9,

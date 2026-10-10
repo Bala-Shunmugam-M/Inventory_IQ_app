@@ -24,6 +24,7 @@ import {
   updateProduct,
   deleteProduct,
   receiveStock,
+  orderQty,
   buildProduct,
   loadDemo,
 } from '../lib/storage';
@@ -31,6 +32,7 @@ import { COLORS, STATUS_LABEL, STATUS_COLORS } from '../lib/theme';
 
 const FILTERS = [
   { key: 'all', label: 'All' },
+  { key: 'incoming', label: '📥 Arriving' },
   { key: 'urgent', label: '🔴 Urgent' },
   { key: 'watch', label: '🟡 Watch' },
   { key: 'good', label: '✅ Good' },
@@ -71,6 +73,18 @@ export default function ProductsScreen({ navigation, route }) {
     refresh();
     return unsub;
   }, [navigation, refresh]);
+
+  useEffect(() => {
+    if (route.params?.filter) {
+      setFilter(route.params.filter);
+      navigation.setParams({ filter: undefined });
+    }
+  }, [route.params?.filter]);
+
+  const receive = (p) => Alert.alert('Has this stock arrived?', 'Have all ' + p.incoming + ' units of ' + p.name + ' arrived? Confirm only after checking the delivery.', [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Stock arrived', onPress: async () => { await receiveStock(p.id); await refresh(); } },
+  ]);
 
   // Auto-open edit if navigated with focusId
   useEffect(() => {
@@ -165,6 +179,7 @@ export default function ProductsScreen({ navigation, route }) {
 
   const filtered = products.filter((p) => {
     if (filter === 'all') return true;
+    if (filter === 'incoming') return p.incoming > 0;
     if (filter === 'urgent') return p.status === 'critical' || p.status === 'order';
     if (filter === 'watch') return p.status === 'watch';
     if (filter === 'good') return p.status === 'good';
@@ -173,6 +188,7 @@ export default function ProductsScreen({ navigation, route }) {
 
   const counts = {
     all: products.length,
+    incoming: products.filter((p) => p.incoming > 0).length,
     urgent: products.filter((p) => p.status === 'critical' || p.status === 'order').length,
     watch: products.filter((p) => p.status === 'watch').length,
     good: products.filter((p) => p.status === 'good').length,
@@ -219,7 +235,7 @@ export default function ProductsScreen({ navigation, route }) {
                   {editingId ? '✏️ Edit Product' : '＋ Add New Product'}
                 </Text>
                 <Text style={styles.modalSub}>
-                  Reorder point and EOQ are computed automatically.
+                  Purchase suggestions are calculated from these details.
                 </Text>
 
                 <Text style={styles.fieldLabel}>Product Name *</Text>
@@ -255,7 +271,7 @@ export default function ProductsScreen({ navigation, route }) {
 
                 <View style={styles.fieldRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.fieldLabel}>Daily Demand</Text>
+                    <Text style={styles.fieldLabel}>Usual units sold per day</Text>
                     <TextInput
                       style={styles.field}
                       value={form.demand}
@@ -348,7 +364,7 @@ export default function ProductsScreen({ navigation, route }) {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Products</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={openAdd}>
+        <TouchableOpacity style={styles.addBtn} accessibilityRole="button" accessibilityLabel="Add product" onPress={openAdd}>
           <Text style={styles.addBtnText}>＋</Text>
         </TouchableOpacity>
       </View>
@@ -382,12 +398,7 @@ export default function ProductsScreen({ navigation, route }) {
           const sc = STATUS_COLORS[p.status] || STATUS_COLORS.good;
           const pct = Math.max(3, Math.min(100, Math.round((p.stock / p.max) * 100)));
           return (
-            <TouchableOpacity
-              key={p.id}
-              style={styles.card}
-              onPress={() => openEdit(p)}
-              activeOpacity={0.7}
-            >
+            <View key={p.id} style={styles.card}>
               <View style={styles.cardTop}>
                 <Text style={styles.cardIcon}>{p.ico || '📦'}</Text>
                 <View style={{ flex: 1 }}>
@@ -410,8 +421,7 @@ export default function ProductsScreen({ navigation, route }) {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.stockNumber}>
                     <Text style={styles.stockCur}>{p.stock}</Text>
-                    <Text style={styles.stockSep}> / </Text>
-                    <Text style={styles.stockMax}>{p.max}</Text>
+                    <Text style={styles.stockMax}> units on shelf</Text>
                   </Text>
                   <View style={styles.bar}>
                     <View
@@ -423,22 +433,17 @@ export default function ProductsScreen({ navigation, route }) {
                   </View>
                 </View>
                 <View style={styles.eoqBox}>
-                  <Text style={styles.eoqLabel}>EOQ</Text>
-                  <Text style={styles.eoqValue}>{p.eoq}</Text>
+                  <Text style={styles.eoqLabel}>Suggested purchase</Text>
+                  <Text style={styles.eoqValue}>{orderQty(p)} units</Text>
                 </View>
               </View>
 
-              {p.incoming > 0 && (
-                <TouchableOpacity
-                  onPress={async () => {
-                    await receiveStock(p.id);
-                    await refresh();
-                  }}
-                >
-                  <Text style={styles.incoming}>📦 +{p.incoming} arriving · tap when received</Text>
-                </TouchableOpacity>
-              )}
-            </TouchableOpacity>
+              {p.incoming > 0 && <Text style={styles.incoming}>📦 {p.incoming} units ordered · waiting to arrive</Text>}
+              <View style={styles.cardActions}>
+                {p.incoming > 0 && <TouchableOpacity style={styles.receiveBtn} accessibilityRole="button" onPress={() => receive(p)}><Text style={styles.receiveText}>📥 Stock arrived</Text></TouchableOpacity>}
+                <TouchableOpacity style={styles.editBtn} accessibilityRole="button" accessibilityLabel={'Edit ' + p.name} onPress={() => openEdit(p)}><Text style={styles.editText}>Edit product</Text></TouchableOpacity>
+              </View>
+            </View>
           );
         })}
       </ScrollView>
@@ -449,6 +454,11 @@ export default function ProductsScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
+  cardActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  receiveBtn: { flex: 1, minWidth: 130, minHeight: 48, padding: 12, backgroundColor: COLORS.blue, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  receiveText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  editBtn: { flex: 1, minWidth: 130, minHeight: 48, padding: 12, backgroundColor: COLORS.surface, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  editText: { color: COLORS.ink, fontSize: 15, fontWeight: '700' },
   container: { flex: 1, backgroundColor: COLORS.bg },
   empty: {
     flex: 1,
@@ -489,8 +499,8 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '800', color: COLORS.ink },
   addBtn: {
     backgroundColor: COLORS.ink,
-    width: 36,
-    height: 36,
+    width: 48,
+    height: 48,
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
@@ -503,6 +513,8 @@ const styles = StyleSheet.create({
     flexGrow: 0,
   },
   tab: {
+    minHeight: 44,
+    justifyContent: 'center',
     backgroundColor: COLORS.surface,
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -510,7 +522,7 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   tabActive: { backgroundColor: COLORS.blueLight },
-  tabText: { fontSize: 11, fontWeight: '700', color: COLORS.ink2 },
+  tabText: { fontSize: 14, fontWeight: '700', color: COLORS.ink2 },
   noMatch: { padding: 30, alignItems: 'center' },
   noMatchText: { fontSize: 12, fontWeight: '600', color: COLORS.muted },
   card: {
@@ -521,9 +533,9 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 8,
   },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  cardTop: { flexWrap: 'wrap', flexDirection: 'row', alignItems: 'center', gap: 12 },
   cardIcon: { fontSize: 28 },
-  cardName: { fontSize: 13, fontWeight: '700', color: COLORS.ink },
+  cardName: { fontSize: 17, fontWeight: '700', color: COLORS.ink },
   cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 },
   classBadge: {
     backgroundColor: COLORS.blueLight,
@@ -532,9 +544,9 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   classBadgeText: { fontSize: 9, fontWeight: '800', color: COLORS.blue },
-  cardSupplier: { fontSize: 10, color: COLORS.muted, fontWeight: '600' },
-  cardStatus: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  cardStatusText: { fontSize: 9, fontWeight: '700' },
+  cardSupplier: { fontSize: 14, flexShrink: 1, color: COLORS.muted, fontWeight: '600' },
+  cardStatus: { width: '100%', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  cardStatusText: { fontSize: 14, fontWeight: '700' },
   stockRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
   stockNumber: { fontSize: 14 },
   stockCur: { fontWeight: '800', color: COLORS.ink, fontSize: 16 },
@@ -549,10 +561,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
-  eoqLabel: { fontSize: 8, fontWeight: '700', color: COLORS.muted },
-  eoqValue: { fontSize: 13, fontWeight: '800', color: COLORS.ink },
+  eoqLabel: { fontSize: 12, fontWeight: '700', color: COLORS.muted },
+  eoqValue: { fontSize: 18, fontWeight: '800', color: COLORS.ink },
   incoming: {
-    fontSize: 10,
+    fontSize: 14,
     color: COLORS.blue,
     fontWeight: '700',
     marginTop: 6,
@@ -574,9 +586,9 @@ const styles = StyleSheet.create({
     maxHeight: '88%',
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: COLORS.ink },
-  modalSub: { fontSize: 11, color: COLORS.muted, marginTop: 2, marginBottom: 14 },
+  modalSub: { fontSize: 14, color: COLORS.muted, marginTop: 2, marginBottom: 14 },
   fieldLabel: {
-    fontSize: 10,
+    fontSize: 14,
     fontWeight: '700',
     color: COLORS.ink2,
     marginBottom: 4,
@@ -587,13 +599,16 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     borderRadius: 8,
     padding: 11,
-    fontSize: 13,
+    fontSize: 16,
+    minHeight: 48,
     backgroundColor: COLORS.bg,
     color: COLORS.ink,
   },
   fieldRow: { flexDirection: 'row', gap: 10 },
   leadRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
   leadBtn: {
+    minHeight: 44,
+    justifyContent: 'center',
     flex: 1,
     minWidth: 70,
     backgroundColor: COLORS.bg,

@@ -154,8 +154,10 @@ html,body{height:100%;background:var(--bg);font-family:var(--font);-webkit-font-
   .search-box{width:160px}
 }
 </style>
+<link rel="stylesheet" href="merchant-ui.css"/>
+<script src="merchant-ui.js"></script>
 </head>
-<body>
+<body class="merchant-desktop">
 <div class="app">
 <aside class="sidebar">
   <div class="sb-brand">
@@ -226,6 +228,11 @@ html,body{height:100%;background:var(--bg);font-family:var(--font);-webkit-font-
 
   <div class="content">
     <div class="screen active" id="s-dashboard">
+      <div class="merchant-start" aria-label="Everyday tasks">
+        <button type="button" onclick="location.href='index.html?view=mobile'"><span class="task-icon" aria-hidden="true">📝</span><span>Enter sales<small>Open the simple sales screen</small></span></button>
+        <button type="button" onclick="goScreen('products')"><span class="task-icon" aria-hidden="true">📦</span><span>Check stock<small>Products and purchase suggestions</small></span></button>
+        <button type="button" onclick="goScreen('orders')"><span class="task-icon" aria-hidden="true">📥</span><span>Orders &amp; deliveries<small>Record orders and received stock</small></span></button>
+      </div>
       <div id="intelCenter"></div>
       <div id="alertSlot"></div>
       <div class="kpi-grid" id="kpiGrid"></div>
@@ -924,7 +931,7 @@ function renderOrders(){
     .sort(function(a,b){var o={critical:0,order:1,watch:2};return (o[a.status]||3)-(o[b.status]||3);});
   document.getElementById('ordCount').textContent=orders.length+' item'+(orders.length!==1?'s':'')+' needing reorder';
   if(!orders.length){document.getElementById('ordTbl').innerHTML='<div class="empty"><div class="empty-ico">✅</div><div class="empty-t">All Stocked Up</div><div class="empty-s">No products require reordering right now</div></div>';return;}
-  document.getElementById('ordTbl').innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Product</th><th>Stock</th><th>ROP</th><th>Suggested Order</th><th>Cost</th><th>Total</th><th>Lead Time</th><th>Supplier</th><th>Status</th><th></th></tr></thead><tbody>'
+  document.getElementById('ordTbl').innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Product</th><th>Stock</th><th>Reorder level</th><th>Suggested purchase</th><th>Cost</th><th>Total</th><th>Delivery time</th><th>Supplier</th><th>Status</th><th></th></tr></thead><tbody>'
     +orders.map(function(p){
       var st=p.status==='critical'?'crit':p.status==='order'?'ord':'wat';
       var stl=p.status==='critical'?'CRITICAL':p.status==='order'?'ORDER NOW':'WATCH';
@@ -936,7 +943,7 @@ function renderOrders(){
         +'<td>'+iqLead(p)+'d</td>'
         +'<td>'+(p.supplier||'—')+'</td>'
         +'<td><span class="pill '+st+'">'+stl+'</span></td>'
-        +'<td>'+(qty>0?'<button class="act-btn" onclick="markOrdered('+p.id+')">📦 Mark Ordered</button>':'<span style="font-size:11px;color:var(--muted);font-weight:700">✓ On order</span>')+(p.incoming?' <button class="act-btn" onclick="receiveStock('+p.id+')">📥 Receive '+p.incoming+'</button>':'')+'</td>'
+        +'<td>'+(qty>0?'<button class="act-btn" onclick="iqUiOrder('+p.id+')">✓ I placed this order</button>':'<span style="font-size:11px;color:var(--muted);font-weight:700">✓ On order</span>')+(p.incoming?' <button class="act-btn" onclick="iqUiReceive('+p.id+')">📥 Stock arrived: '+p.incoming+'</button>':'')+'</td>'
         +'</tr>';
     }).join('')+'</tbody></table></div>';
 }

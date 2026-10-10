@@ -42,7 +42,7 @@ export default function App() {
               paddingBottom: 8,
               paddingTop: 6,
             },
-            tabBarLabelStyle: { fontSize: 10, fontWeight: '700' },
+            tabBarLabelStyle: { fontSize: 12, fontWeight: '700' },
             tabBarActiveTintColor: COLORS.blue,
             tabBarInactiveTintColor: COLORS.muted,
           }}
@@ -50,7 +50,7 @@ export default function App() {
           <Tab.Screen
             name="Home"
             component={HomeScreen}
-            options={{ tabBarIcon: tabIcon('🏠'), title: 'InventoryIQ' }}
+            options={{ tabBarIcon: tabIcon('🏠'), title: 'InventoryIQ', tabBarLabel: 'Home' }}
           />
           <Tab.Screen
             name="Sales"

@@ -623,8 +623,10 @@ html,body{
 #bsheet-overlay{opacity:0;transition:opacity .25s;border-radius:50px 50px 50px 50px}
 #bsheet-content{box-shadow:0 -8px 32px rgba(13,18,38,.15)}
 </style>
+<link rel="stylesheet" href="merchant-ui.css"/>
+<script src="merchant-ui.js"></script>
 </head>
-<body>
+<body class="merchant-mobile">
 <div class="stage">
 <div class="phone" id="phone">
 
@@ -658,8 +660,8 @@ html,body{
       </div>
       <div class="ob1-bot">
         <div class="ob-feat"><div class="ob-feat-ico" style="background:var(--blue-l)">📦</div><div><div class="ob-ft">All products in one place</div><div class="ob-fs">Cost, price, supplier, lead time</div></div></div>
-        <div class="ob-feat"><div class="ob-feat-ico" style="background:var(--green-l)">🎯</div><div><div class="ob-ft">ABC classification built-in</div><div class="ob-fs">A, B, C priority auto-assigned</div></div></div>
-        <div class="ob-feat"><div class="ob-feat-ico" style="background:var(--red-l)">📊</div><div><div class="ob-ft">EOQ + ROP calculated instantly</div><div class="ob-fs">Harris-Wilson, zero maths needed</div></div></div>
+        <div class="ob-feat"><div class="ob-feat-ico" style="background:var(--green-l)">🎯</div><div><div class="ob-ft">Know what needs attention</div><div class="ob-fs">See which products need stock soon</div></div></div>
+        <div class="ob-feat"><div class="ob-feat-ico" style="background:var(--red-l)">📊</div><div><div class="ob-ft">Know how much to buy</div><div class="ob-fs">Purchase suggestions based on your stock</div></div></div>
       </div>
     </div>
     <!-- Slide 2 -->
@@ -722,28 +724,24 @@ html,body{
 <div class="screen slide-right" id="s-home">
   <div class="h-hdr">
     <div class="hh-row">
-      <div><div class="hh-greet" id="hGrT">Good Morning</div><div class="hh-title">Dashboard</div><div style="font-size:10px;color:rgba(255,255,255,.72);font-weight:600;letter-spacing:.3px;margin-top:1px">AI Operations Intelligence</div></div>
-      <div style="display:flex;gap:6px">
-        <div class="hh-btn"><div class="hh-dot"></div><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
-        <div class="hh-btn" onclick="toast('Settings')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
-      </div>
+      <div><div class="hh-greet" id="hGrT">Welcome back</div><div class="hh-title">Your shop today</div></div>
+      <button type="button" class="merchant-button secondary" onclick="nav('more')">Settings</button>
     </div>
     <div class="sum-row">
-      <div class="sum-c"><div class="sum-ico">💰</div><div class="sum-n" id="hPft">₹1.2K</div><div class="sum-l">Profit Today</div></div>
-      <div class="sum-c"><div class="sum-ico">📦</div><div class="sum-n">12</div><div class="sum-l">Products</div></div>
+      <div class="sum-c"><div class="sum-ico">💰</div><div class="sum-n" id="hPft">₹0</div><div class="sum-l" id="hPftLabel">Profit today</div></div>
+      <div class="sum-c"><div class="sum-ico">📦</div><div class="sum-n" id="hProdCount">0</div><div class="sum-l">Products</div></div>
       <div class="sum-c alrt"><div class="sum-ico">⚠️</div><div class="sum-n" id="hAlr">5</div><div class="sum-l">Need Action</div></div>
     </div>
   </div>
   <div class="scroll">
-    <div id="homeIntel"></div>
-    <div class="sec-h"><span class="sec-t">⚡ Urgent actions</span><span class="sec-a" onclick="nav('prods')">View all</span></div>
-    <div class="ac-list" id="hAcList"></div>
-    <div class="qa-row">
-      <div class="qa-b" onclick="nav('sales')"><div class="qa-ico" style="background:var(--blue-l)">📝</div><span class="qa-lbl">Sales</span></div>
-      <div class="qa-b" onclick="nav('prods')"><div class="qa-ico" style="background:var(--green-l)">📦</div><span class="qa-lbl">Products</span></div>
-      <div class="qa-b" onclick="nav('ai')"><div class="qa-ico" style="background:var(--amber-l)">🤖</div><span class="qa-lbl">AI</span></div>
-      <div class="qa-b" onclick="toast('Syncing…','blue')"><div class="qa-ico" style="background:var(--purple-l)">☁️</div><span class="qa-lbl">Sync</span></div>
+    <div class="merchant-start" aria-label="Everyday tasks">
+      <button type="button" onclick="nav('sales')"><span class="task-icon" aria-hidden="true">📝</span><span>Enter sales<small>How many units did you sell?</small></span></button>
+      <button type="button" onclick="nav('prods')"><span class="task-icon" aria-hidden="true">📦</span><span>Check stock<small>See what is left and what to buy</small></span></button>
+      <button type="button" onclick="iqUiArrivals()"><span class="task-icon" aria-hidden="true">📥</span><span>Stock arrived<small>Check a delivery you have received</small></span></button>
     </div>
+    <div class="sec-h"><span class="sec-t">⚡ Needs attention</span><button type="button" class="sec-a" onclick="nav('prods')">View all</button></div>
+    <div class="ac-list" id="hAcList"></div>
+    <details class="merchant-reports"><summary>Reports &amp; insights</summary><div id="homeIntel"></div>
     <div class="spark-card">
       <div class="sk-row"><div class="sk-amt" id="spAmt">₹8,640</div><span class="sk-chg">+12%</span></div>
       <div class="sk-sub">7-Day Revenue</div>
@@ -759,6 +757,7 @@ html,body{
       </div>
       <div><div class="hi-t">Stock Health</div><div class="hi-s"><span id="hiG">7</span> healthy · <span id="hiW">2</span> watch · <span id="hiC">3</span> critical</div></div>
     </div>
+    </details>
     <div style="height:10px"></div>
   </div>
 </div>
@@ -766,13 +765,14 @@ html,body{
 <!-- ■ PRODUCTS -->
 <div class="screen slide-right" id="s-prods">
   <div class="ph">
-    <div class="ph-row"><span class="ph-title">Products</span><div class="ph-acts"><div class="ph-btn" onclick="openAddProd()">＋</div></div></div>
-    <div class="s-bar"><span style="font-size:11px">🔍</span><span class="s-txt">Search products…</span></div>
+    <div class="ph-row"><span class="ph-title">Your stock</span><div class="ph-acts"><button type="button" class="ph-btn" onclick="openAddProd()">＋ Add</button></div></div>
+    <label class="merchant-search">Find a product<input id="productSearch" type="search" placeholder="Type a name or supplier" oninput="renderProdList()"/></label>
     <div class="ftabs" id="filterTabs">
-      <div class="ftab on" onclick="filterProds('all',this)">All <span id="ftc-all">(0)</span></div>
-      <div class="ftab rr" onclick="filterProds('urgent',this)">🔴 Urgent <span id="ftc-urgent">(0)</span></div>
-      <div class="ftab aa" onclick="filterProds('watch',this)">🟡 Watch <span id="ftc-watch">(0)</span></div>
-      <div class="ftab" onclick="filterProds('good',this)">✅ Good <span id="ftc-good">(0)</span></div>
+      <button type="button" class="ftab on" onclick="filterProds('all',this)">All <span id="ftc-all">(0)</span></button>
+      <button type="button" class="ftab rr" onclick="filterProds('urgent',this)">🔴 Urgent <span id="ftc-urgent">(0)</span></button>
+      <button type="button" class="ftab aa" onclick="filterProds('watch',this)">🟡 Watch <span id="ftc-watch">(0)</span></button>
+      <button type="button" class="ftab" onclick="filterProds('good',this)">✅ Good <span id="ftc-good">(0)</span></button>
+      <button type="button" class="ftab" id="filter-incoming" onclick="filterProds('incoming',this)">📥 Arriving</button>
     </div>
   </div>
   <div class="scroll"><div class="prod-list" id="pList"></div><div style="height:60px"></div></div>
@@ -782,9 +782,9 @@ html,body{
 <!-- ■ SALES -->
 <div class="screen slide-right" id="s-sales">
   <div class="s-tnav">
-    <div class="ph-btn" onclick="nav('home')">←</div>
-    <div style="text-align:center"><div style="font-size:13px;font-weight:800;color:var(--ink)">Daily Sales</div><div style="font-size:8px;color:var(--muted);margin-top:1px" id="sDate">Today</div></div>
-    <div class="ph-btn" onclick="resetSales()">↺</div>
+    <button type="button" class="ph-btn" aria-label="Back to home" onclick="nav('home')">←</button>
+    <div style="text-align:center"><div style="font-size:20px;font-weight:800;color:var(--ink)">Today’s sales</div><div style="font-size:14px;color:var(--muted);margin-top:1px" id="sDate">Today</div></div>
+    <button type="button" class="ph-btn" onclick="resetSales()">Reset</button>
   </div>
   <div class="s-banner">
     <div style="display:flex;flex-direction:column;align-items:center"><span class="sbv" id="sbIt">0</span><span class="sbl">Products</span></div>
@@ -794,7 +794,7 @@ html,body{
     <div class="sbp"><span class="sbpt" id="sbPf">💰 ₹0</span></div>
   </div>
   <div class="scroll" style="padding-top:8px">
-    <div style="padding:0 14px 6px;font-size:8px;font-weight:800;color:var(--muted);letter-spacing:.6px;text-transform:uppercase">Enter units sold today</div>
+    <p class="merchant-note">Tap + or − for each product sold. Check every product before saving: blank quantities currently count as zero for today.</p>
     <div class="si-list" id="siList"></div>
     <div style="height:10px"></div>
   </div>
@@ -1238,15 +1238,15 @@ html,body{
 
 <!-- BOTTOM NAV -->
 <div class="bnav" id="bnav">
-  <div class="ni act" id="n0" onclick="nav('home')"><div class="ni-ico">🏠</div><span class="ni-lbl">Home</span></div>
-  <div class="ni" id="n1" onclick="nav('prods')"><div class="ni-ico">📦</div><span class="ni-lbl">Products</span></div>
-  <div class="ni" id="n2" onclick="nav('sales')"><div class="ni-ico">📝</div><span class="ni-lbl">Sales</span></div>
-  <div class="ni" id="n3" onclick="nav('hub')"><div class="ni-ico">✦</div><span class="ni-lbl">Insights</span></div>
-  <div class="ni" id="n4" onclick="nav('more')"><div class="ni-ico">⚙️</div><span class="ni-lbl">More</span></div>
+  <button type="button" class="ni act" id="n0" onclick="nav('home')"><span class="ni-ico" aria-hidden="true">🏠</span><span class="ni-lbl">Home</span></button>
+  <button type="button" class="ni" id="n1" onclick="nav('prods')"><span class="ni-ico" aria-hidden="true">📦</span><span class="ni-lbl">Products</span></button>
+  <button type="button" class="ni" id="n2" onclick="nav('sales')"><span class="ni-ico" aria-hidden="true">📝</span><span class="ni-lbl">Sales</span></button>
+  <button type="button" class="ni" id="n3" onclick="nav('hub')"><span class="ni-ico" aria-hidden="true">✦</span><span class="ni-lbl">Insights</span></button>
+  <button type="button" class="ni" id="n4" onclick="nav('more')"><span class="ni-ico" aria-hidden="true">⚙️</span><span class="ni-lbl">More</span></button>
 </div>
 
 <!-- TOAST -->
-<div class="toast" id="toastEl"></div>
+<div class="toast" id="toastEl" role="status" aria-live="polite"></div>
 
 </div><!-- phone -->
 </div><!-- stage -->
@@ -1742,6 +1742,8 @@ function mRunScenario(){
   box.innerHTML=h;
 }
 function initHome(){
+  document.getElementById('hProdCount').textContent=PRODS.length;
+  document.getElementById('hPftLabel').textContent='Profit today';
   try{renderHomeDash();}catch(e){}
   // empty state
   if(!PRODS.length){
@@ -1763,6 +1765,7 @@ function initHome(){
   var urgent=PRODS.filter(function(p){return p.status!=='good';});
   // Profit Today: what was logged today; before any sales are logged, the expected daily profit.
   var today=iqToday(),logged=loadSalesLog().filter(function(e){return iqToday(new Date(e.date))===today;});
+  document.getElementById('hPftLabel').textContent=logged.length?'Logged profit today':'Expected daily profit';
   var tp=logged.length?logged.reduce(function(s,e){return s+(e.totalProfit||0);},0):PRODS.reduce(function(s,p){return s+(p.sell-p.cost)*iqD(p);},0);
   document.getElementById('hPft').textContent='₹'+(tp>=1000?(tp/1000).toFixed(1)+'K':Math.round(tp));
   document.getElementById('hAlr').textContent=PRODS.filter(iqNeedsAction).length;
@@ -1795,61 +1798,19 @@ function initHome(){
 }
 
 function renderHomeCards(){
-  var el=document.getElementById('hAcList');el.innerHTML='';
+  var el=document.getElementById('hAcList');el.replaceChildren();
   if(!PRODS.length){
-    el.innerHTML='<div style="text-align:center;padding:30px 20px;background:var(--white);border-radius:14px;border:1px dashed var(--border)">'
-      +'<div style="font-size:32px;margin-bottom:8px">📦</div>'
-      +'<div style="font-size:13px;font-weight:800;color:var(--ink);margin-bottom:4px">No products yet</div>'
-      +'<div style="font-size:10px;color:var(--muted);margin-bottom:14px">Add your first product to start tracking</div>'
-      +'<button onclick="openAddProd()" style="padding:9px 16px;background:var(--ink);color:#fff;border:none;border-radius:10px;font-size:11px;font-weight:700;font-family:var(--font);cursor:pointer;margin-right:6px">＋ Add Product</button>'
-      +'<button onclick="loadDemo()" style="padding:9px 16px;background:var(--surface);color:var(--ink2);border:none;border-radius:10px;font-size:11px;font-weight:700;font-family:var(--font);cursor:pointer">🎮 Try Demo</button>'
-      +'</div>';
-    return;
+    var empty=iqUiNode('div','merchant-product');
+    empty.appendChild(iqUiNode('h3','','Start with your first product'));
+    empty.appendChild(iqUiNode('p','','Add what you sell, or explore with sample products.'));
+    var actions=iqUiNode('div','merchant-actions');
+    actions.appendChild(iqUiButton('＋ Add product',openAddProd));
+    actions.appendChild(iqUiButton('Try sample products',loadDemo,true));
+    empty.appendChild(actions);el.appendChild(empty);return;
   }
   var urgent=PRODS.filter(iqNeedsAction);
-  if(!urgent.length){
-    el.innerHTML='<div style="text-align:center;padding:20px;font-size:12px;font-weight:600;color:var(--muted)">🎉 All clear — nothing to action today!</div>';
-    return;
-  }
-  urgent.slice(0,3).forEach(function(p){
-    var isCrit=p.status==='critical'||p.status==='order';
-    var cls=isCrit?'rc':'wc';
-    var badge=p.status==='critical'?'🔴 CRITICAL — ORDER NOW':p.status==='order'?'🔴 ORDER NOW':'🟡 PREPARE TO ORDER';
-    var inc=p.incoming>0?'<div style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:5px;background:var(--blue-l);color:var(--blue);font-size:7px;font-weight:800">📦 +'+p.incoming+' incoming</div>':'';
-    var ph=p.phone?'<span class="ac-suph">📞 '+p.phone+'</span>':'';
-    var wrap=document.createElement('div');
-    wrap.className='ac-wrap';
-    wrap.innerHTML='<div class="ac-behind"><span class="ac-bhtxt">✓ MARK ORDERED</span>📦</div>'
-      +'<div class="ac '+cls+'">'
-        +'<div class="ac-stripe"></div>'
-        +'<div class="ac-body">'
-          +'<div class="ac-top"><span class="ac-badge">'+badge+'</span><span class="ac-cls">'+p.cls+'</span></div>'
-          +'<div class="ac-qty-row"><span class="ac-qty">'+iqOrderQty(p)+'</span><span class="ac-qty-u">units to order</span></div>'
-          +'<div class="ac-name">'+p.name+'</div>'
-          +'<div class="ac-meta"><div class="mp"><span class="ml">Stock</span><span class="mv">'+p.stock+'</span></div><div class="mp"><span class="ml">ROP</span><span class="mv">'+p.rop+'</span></div><div class="mp"><span class="ml">EOQ</span><span class="mv">'+p.eoq+'</span></div></div>'
-          +inc
-          +'<div class="ac-sup"><span style="font-size:8px">🏭</span><span class="ac-supn">'+p.supplier+'</span>'+ph+'</div>'
-        +'</div>'
-        +'<div class="sw-hint"><span class="sw-arr">←</span><span style="font-size:8px;color:var(--muted)">swipe</span></div>'
-      +'</div>';
-    el.appendChild(wrap);
-    addSwipe(wrap,p.id);
-  });
-}
-
-function addSwipe(wrap,id){
-  var card=wrap.querySelector('.ac');
-  var behind=wrap.querySelector('.ac-behind');
-  var sx=0,cx=0,drag=false,THR=-80;
-  function start(e){sx=(e.touches?e.touches[0].clientX:e.clientX);drag=true;card.style.transition='none';}
-  function move(e){if(!drag)return;cx=(e.touches?e.touches[0].clientX:e.clientX)-sx;if(cx>0)cx=0;card.style.transform='translateX('+cx+'px)';behind.style.opacity=Math.min(1,Math.abs(cx)/80);if(Math.abs(cx)>6)e.preventDefault();}
-  function end(){if(!drag)return;drag=false;card.style.transition='transform .28s cubic-bezier(.4,0,.2,1)';if(cx<THR){card.style.transform='translateX(-110%)';behind.style.opacity='1';setTimeout(function(){markOrdered(id);renderHomeCards();document.getElementById('hAlr').textContent=PRODS.filter(iqNeedsAction).length;},280);}else{card.style.transform='translateX(0)';behind.style.opacity='0';}cx=0;}
-  card.addEventListener('touchstart',start,{passive:true});
-  card.addEventListener('touchmove',move,{passive:false});
-  card.addEventListener('touchend',end);
-  card.addEventListener('mousedown',start);
-  document.addEventListener('mousemove',function(e){if(drag)move(e);});
-  document.addEventListener('mouseup',function(){if(drag)end();});
+  if(!urgent.length){el.appendChild(iqUiNode('p','merchant-note','✓ No purchases suggested right now. Check arriving stock when a delivery comes.'));return;}
+  urgent.slice(0,3).forEach(function(p){el.appendChild(iqUiProductCard(p,true));});
 }
 
 /* ══════════════════════════════════════════
@@ -1869,6 +1830,7 @@ function filterProds(f,tabEl){
 
 function initProds(){
   prodFilter='all';
+  document.getElementById('productSearch').value='';
   // Reset all tabs to default
   var tabs=document.querySelectorAll('#filterTabs .ftab');
   tabs.forEach(function(t){t.classList.remove('on');});
@@ -1877,73 +1839,20 @@ function initProds(){
 }
 
 function renderProdList(){
-  var el=document.getElementById('pList');el.innerHTML='';
-  // update filter tab counts
-  var fa=PRODS.length;
-  var fu=PRODS.filter(function(p){return p.status==='critical'||p.status==='order';}).length;
-  var fw=PRODS.filter(function(p){return p.status==='watch';}).length;
-  var fg=PRODS.filter(function(p){return p.status==='good';}).length;
-  var elA=document.getElementById('ftc-all');if(elA)elA.textContent='('+fa+')';
-  var elU=document.getElementById('ftc-urgent');if(elU)elU.textContent='('+fu+')';
-  var elW=document.getElementById('ftc-watch');if(elW)elW.textContent='('+fw+')';
-  var elG=document.getElementById('ftc-good');if(elG)elG.textContent='('+fg+')';
-
-  if(!PRODS.length){
-    el.innerHTML='<div style="padding:40px 20px;text-align:center;background:var(--white);margin:14px;border-radius:14px;border:1px dashed var(--border)">'
-      +'<div style="font-size:32px;margin-bottom:8px">📦</div>'
-      +'<div style="font-size:13px;font-weight:800;color:var(--ink);margin-bottom:4px">No products yet</div>'
-      +'<div style="font-size:10px;color:var(--muted);margin-bottom:14px">Tap ＋ above to add your first product</div>'
-      +'<button onclick="loadDemo()" style="padding:9px 16px;background:var(--surface);color:var(--ink2);border:none;border-radius:10px;font-size:11px;font-weight:700;font-family:var(--font);cursor:pointer">🎮 Try Demo Data</button>'
-      +'</div>';
-    return;
-  }
+  var el=document.getElementById('pList');el.replaceChildren();
+  var counts={all:PRODS.length,urgent:PRODS.filter(function(p){return p.status==='critical'||p.status==='order';}).length,watch:PRODS.filter(function(p){return p.status==='watch';}).length,good:PRODS.filter(function(p){return p.status==='good';}).length};
+  Object.keys(counts).forEach(function(k){var e=document.getElementById('ftc-'+k);if(e)e.textContent='('+counts[k]+')';});
+  var search=document.getElementById('productSearch').value.trim().toLowerCase();
   var list=PRODS.filter(function(p){
-    if(prodFilter==='all')return true;
+    if(search&&(String(p.name||'')+' '+String(p.supplier||'')).toLowerCase().indexOf(search)<0)return false;
+    if(prodFilter==='incoming')return p.incoming>0;
     if(prodFilter==='urgent')return p.status==='critical'||p.status==='order';
     if(prodFilter==='watch')return p.status==='watch';
     if(prodFilter==='good')return p.status==='good';
     return true;
   });
-  if(!list.length){
-    el.innerHTML='<div style="padding:40px 20px;text-align:center;font-size:12px;font-weight:600;color:var(--muted)">No products in this category</div>';
-    return;
-  }
-  list.forEach(function(p,i){
-    var pct=Math.round((p.stock/p.max)*100);
-    var bc=p.stock===0?'out':p.status==='critical'||p.status==='order'?'lo':p.status==='watch'?'wa':'ok';
-    var sl=p.stock===0?'OUT':p.status==='critical'?'CRITICAL':p.status==='order'?'LOW STOCK':p.status==='watch'?'WATCH':'IN STOCK';
-    var inc=p.incoming>0?'<div class="inc-b" onclick="event.stopPropagation();receiveStock('+p.id+')" style="cursor:pointer">📦 +'+p.incoming+' arriving · tap when received</div>':'';
-    var wrap=document.createElement('div');
-    wrap.className='pi-wrap';
-    wrap.innerHTML='<div class="pi-behind"><div class="pi-ab e" onclick="event.stopPropagation();openEditProd('+p.id+')">✏️</div><div class="pi-ab o" onclick="event.stopPropagation();markOrdered('+p.id+')">📦</div><div class="pi-ab d" onclick="event.stopPropagation();quickDelete('+p.id+')">🗑</div></div>'
-      +'<div class="pi" id="pp'+p.id+'">'
-        +'<div class="pi-ico">'+(p.ico||'📦')+'</div>'
-        +'<div class="pi-info">'
-          +'<div class="pi-name">'+p.name+'</div>'
-          +'<div class="pi-cr"><span class="pi-cls">'+(p.cls||'C')+'</span><span class="pi-sup">'+(p.supplier||'—')+'</span></div>'
-          +'<div class="sbr"><div class="stock-nums"><span class="scur">'+p.stock+'</span><span class="ssep">/</span><span class="smax">'+p.max+'</span></div><span class="slbl '+bc+'">'+sl+'</span></div>'
-          +'<div class="btrack"><div class="bfill '+bc+'" style="width:'+(p.stock===0?0:Math.max(3,Math.min(100,pct)))+'%"></div></div>'
-          +inc
-        +'</div>'
-        +'<div class="pi-right">'
-          +'<span class="pi-el">Order</span>'
-          +'<span class="pi-eoq">'+iqOrderQty(p)+'</span>'
-          +'<span class="pi-st '+bc+'">'+sl+'</span>'
-        +'</div>'
-      +'</div>';
-    el.appendChild(wrap);
-    // swipe
-    var card=wrap.querySelector('.pi');
-    var bh=wrap.querySelector('.pi-behind');
-    var sx2=0,cx2=0,drag2=false;
-    function st2(e){sx2=(e.touches?e.touches[0].clientX:e.clientX);drag2=true;card.style.transition='none';}
-    function mv2(e){if(!drag2)return;cx2=(e.touches?e.touches[0].clientX:e.clientX)-sx2;if(cx2>0)cx2=0;if(cx2<-130)cx2=-130;card.style.transform='translateX('+cx2+'px)';bh.style.opacity=Math.min(1,Math.abs(cx2)/70);if(Math.abs(cx2)>6&&e.cancelable)e.preventDefault();}
-    function en2(){if(!drag2)return;drag2=false;card.style.transition='transform .22s cubic-bezier(.4,0,.2,1)';if(cx2<-80){card.style.transform='translateX(-130px)';bh.style.opacity='1';}else{card.style.transform='translateX(0)';bh.style.opacity='0';}cx2=0;}
-    card.addEventListener('touchstart',st2,{passive:true});card.addEventListener('touchmove',mv2,{passive:false});card.addEventListener('touchend',en2);
-    card.addEventListener('mousedown',st2);document.addEventListener('mousemove',function(e){if(drag2)mv2(e);});document.addEventListener('mouseup',function(){if(drag2)en2();});
-    // click → edit (use product detail screen if exists, else open edit modal)
-    card.onclick=function(e){if(Math.abs(cx2)<10){openEditProd(p.id);}};
-  });
+  if(!list.length){el.appendChild(iqUiNode('p','merchant-note',!PRODS.length?'No products yet. Tap Add to start.':prodFilter==='incoming'?'No deliveries waiting to arrive.':'No matching products. Try another name or filter.'));return;}
+  list.forEach(function(p){el.appendChild(iqUiProductCard(p,false));});
 }
 
 /* ══════════════════════════════════════════
@@ -1963,25 +1872,21 @@ function renderSales(){
     updateSaveBanner();
     return;
   }
-  var sorted=PRODS.slice().sort(function(a,b){
-    var qa=QTY[a.id]||0,qb=QTY[b.id]||0;
-    if(qa>0&&qb===0)return -1;if(qb>0&&qa===0)return 1;
-    var o={critical:0,order:1,watch:2,good:3};return (o[a.status]||3)-(o[b.status]||3);
-  });
+  var sorted=PRODS.slice(); // Keep rows in place while quantities change.
   sorted.forEach(function(p){
     var q=QTY[p.id]||0;
     var sc=p.stock===0?'lo':p.status==='critical'||p.status==='order'?'lo':p.status==='watch'?'wa':'ok';
     var sl=p.stock===0?'Out of stock':'Stock: '+p.stock;
-    var bot=q>0?'<div class="si-bot"><div class="ep">✓ '+q+' entered</div><span style="font-size:8px;color:var(--muted)">→ ₹'+(q*(p.sell-p.cost))+' profit</span><button class="clr-btn" onclick="clearQ('+p.id+')">✕</button></div>':'';
+    var bot=q>0?'<div class="si-bot"><div class="ep">✓ '+q+' entered</div><span style="font-size:8px;color:var(--muted)">→ ₹'+(q*(p.sell-p.cost))+' profit</span><button class="clr-btn" aria-label="Clear this quantity" onclick="clearQ('+p.id+')">Clear</button></div>':'';
     var card=document.createElement('div');
     card.className='sic'+(q>0?' hs':'');
     card.innerHTML='<div class="si-top"><div class="si-ico">'+(p.ico||'📦')+'</div><div style="flex:1;min-width:0"><div class="si-name">'+p.name+'</div><div class="si-st '+sc+'">'+sl+'</div></div></div>'
       +(p.stock===0?'<div style="padding:0 11px 9px;font-size:9px;font-weight:700;color:var(--red)">Cannot enter — out of stock</div>'
-        :'<div class="ctr-row"><button class="qb qb-m" onclick="adjQ('+p.id+',-1)">−</button>'
+        :'<div class="ctr-row"><button class="qb qb-m" aria-label="Sell one fewer unit" onclick="adjQ('+p.id+',-1)">−</button>'
           +'<div class="qd'+(q>0?' on':'')+'" id="qd'+p.id+'"><span class="qv" id="qv'+p.id+'">'+q+'</span><span class="qu">units sold</span></div>'
-          +'<button class="qb qb-p" onclick="adjQ('+p.id+',1)">+</button></div>'
-          +'<div class="qf-row"><span class="qfl">Quick</span>'
-            +[5,10,20].map(function(n){return '<button class="qfb'+(q===n?' hs':'')+'" onclick="setQ('+p.id+','+n+')">+'+n+'</button>';}).join('')
+          +'<button class="qb qb-p" aria-label="Sell one more unit" onclick="adjQ('+p.id+',1)">+</button></div>'
+          +'<div class="qf-row"><span class="qfl">Set quantity</span>'
+            +[5,10,20].filter(function(n,i,ns){return i===0||Math.min(n,p.stock)!==Math.min(ns[i-1],p.stock);}).map(function(n){return '<button class="qfb'+(q===Math.min(n,p.stock)?' hs':'')+'" onclick="setQ('+p.id+','+n+')">Set '+Math.min(n,p.stock)+'</button>';}).join('')
           +'</div>')
       +bot;
     el.appendChild(card);
