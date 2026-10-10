@@ -11,15 +11,35 @@ function iqUiButton(label, action, secondary) {
   b.addEventListener('click', action);
   return b;
 }
+function iqUiConfirm(title, message, label, action) {
+  var dialog = iqUiNode('dialog', 'merchant-confirm');
+  var heading = iqUiNode('h2', '', title);
+  heading.id = 'merchant-confirm-title';
+  dialog.setAttribute('aria-labelledby', heading.id);
+  dialog.appendChild(heading);
+  var description = iqUiNode('p', '', message);
+  description.id = 'merchant-confirm-description';
+  dialog.setAttribute('aria-describedby', description.id);
+  dialog.appendChild(description);
+  var actions = iqUiNode('div', 'merchant-actions');
+  var cancel = iqUiButton('Cancel', function () { dialog.close(); }, true);
+  actions.appendChild(cancel);
+  actions.appendChild(iqUiButton(label, function () { dialog.close(); action(); }));
+  dialog.appendChild(actions);
+  dialog.addEventListener('close', function () { dialog.remove(); });
+  document.body.appendChild(dialog);
+  dialog.showModal();
+  cancel.focus();
+}
 function iqUiOrder(id) {
   var p = PRODS.find(function (x) { return x.id === id; });
   if (!p || !iqOrderQty(p)) return;
-  if (confirm('Record an order for ' + iqOrderQty(p) + ' units of ' + p.name + '?\n\nUse this after you have ordered from your supplier. This does not send an order.')) markOrdered(id);
+  iqUiConfirm('Record this order?', iqOrderQty(p) + ' units of ' + p.name + '. Use this after ordering from your supplier. This does not send an order.', 'I placed this order', function () { markOrdered(id); });
 }
 function iqUiReceive(id) {
   var p = PRODS.find(function (x) { return x.id === id; });
   if (!p || !p.incoming) return;
-  if (confirm('Have all ' + p.incoming + ' units of ' + p.name + ' arrived?\n\nConfirm only after checking the delivery.')) receiveStock(id);
+  iqUiConfirm('Has this stock arrived?', 'Have all ' + p.incoming + ' units of ' + p.name + ' arrived? Confirm only after checking the delivery.', 'Stock arrived', function () { receiveStock(id); });
 }
 function iqUiArrivals() {
   nav('prods');

@@ -1477,7 +1477,7 @@ function launchApp(){
       var home=document.getElementById('s-home');if(home){home.style.display='flex';home.className='screen active';}
       curScreen='home';
       // initHome runs after DOM is ready
-      setTimeout(function(){initHome();},0);
+      setTimeout(function(){initHome();if(new URLSearchParams(location.search).get('screen')==='sales')nav('sales');},0);
     }
   }catch(e){}
 })();
