@@ -1,0 +1,23 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # node:sqlite (used by the sync and backend tests) needs Node 22.13+
+      - run: node tests/check.mjs
+      - run: node tests/sync.mjs
+      - run: node tests/mobile-parity.mjs
+      - run: node tests/ui-workflows.mjs
+      - run: node backend/test/run.mjs
