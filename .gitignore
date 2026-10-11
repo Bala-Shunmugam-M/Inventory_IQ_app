@@ -41,3 +41,6 @@ mobile/build-*.tar.gz
 
 # wrangler local state
 .wrangler/
+
+# agent tooling state (root and backend/)
+.claude-flow/
