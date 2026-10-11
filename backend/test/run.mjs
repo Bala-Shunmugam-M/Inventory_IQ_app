@@ -144,7 +144,7 @@ assert.equal((await call('GET', '/api/nope')).status, 404);
 
 // ---- AI proxy (moved from tests/check.mjs) ----
 const b = sanitizeBody({ model: 'expensive-model', max_tokens: 99999, temperature: 5, messages: [{ role: 'tool', content: 'hi' }] });
-assert.equal(b.model, 'llama-3.3-70b-versatile');
+assert.equal(b.model, 'openai/gpt-oss-120b');
 assert.equal(b.max_tokens, 2000);
 assert.equal(b.temperature, 1);
 assert.equal(b.messages[0].role, 'user');
@@ -171,7 +171,7 @@ try {
     assert.equal(r.status, 200);
     assert.equal(await r.text(), '{"choices":[]}');
     assert.equal(r.headers.get('Access-Control-Allow-Origin'), ORIGIN);
-    assert.equal(JSON.parse(sent.init.body).model, 'llama-3.3-70b-versatile');
+    assert.equal(JSON.parse(sent.init.body).model, 'openai/gpt-oss-120b');
     assert.equal(sent.init.headers.Authorization, 'Bearer k');
   }
   // the AI route fails closed without its abuse controls…
