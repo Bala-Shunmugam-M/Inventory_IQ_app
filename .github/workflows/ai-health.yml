@@ -12,6 +12,17 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
+      - name: Worker up and cloud-sync database reachable
+        run: |
+          W=https://inventoryiq-llm-proxy.balashunmugamruthran.workers.dev
+          curl -sSf --max-time 30 "$W/api/health" | jq -e '.ok == true' > /dev/null
+          # /api/health never touches D1. A fake store forces a SELECT on the stores table:
+          # 401 means the DB answered; a 500 means the table or binding is broken. Writes nothing.
+          code=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' \
+            -H 'Authorization: Bearer healthcheck' "$W/api/stores/IQ-AAAAAAAAAA/snapshot")
+          echo "fake-store snapshot -> $code"
+          [ "$code" = 401 ]
+
       - name: Call /api/ai and expect a complete JSON reply
         run: |
           # Origin must be the Pages site or the Worker returns 403. Uses 1 of the 300 daily AI calls.
