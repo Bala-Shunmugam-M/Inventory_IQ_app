@@ -12,13 +12,16 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Call /api/ai and expect a non-empty reply
+      - name: Call /api/ai and expect a complete JSON reply
         run: |
           # Origin must be the Pages site or the Worker returns 403. Uses 1 of the 300 daily AI calls.
+          # Asks for JSON like the pages do: fails if the reply is cut off (finish_reason "length",
+          # e.g. reasoning eating the token budget) or isn't parseable JSON.
           out=$(curl -sS --max-time 60 -X POST \
             -H 'Origin: https://bala-shunmugam-m.github.io' \
             -H 'Content-Type: text/plain;charset=UTF-8' \
-            -d '{"messages":[{"role":"user","content":"Reply with just OK"}],"max_tokens":50}' \
+            -d '{"messages":[{"role":"system","content":"Return only a JSON object, no markdown."},{"role":"user","content":"Return {\"status\":\"ok\",\"items\":[1,2,3]} exactly."}],"temperature":0,"max_tokens":200}' \
             https://inventoryiq-llm-proxy.balashunmugamruthran.workers.dev/api/ai)
           echo "$out" | head -c 500; echo
-          echo "$out" | jq -e '.choices[0].message.content | length > 0' > /dev/null
+          echo "$out" | jq -e '.choices[0].finish_reason == "stop"
+            and (.choices[0].message.content | fromjson | .status == "ok" and (.items | length) == 3)' > /dev/null
