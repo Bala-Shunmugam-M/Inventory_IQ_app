@@ -15,7 +15,8 @@
 // Gemini: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
 // Cerebras: https://api.cerebras.ai/v1/chat/completions · SambaNova: https://api.sambanova.ai/v1/chat/completions
 const UPSTREAM = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.3-70b-versatile';
+// llama-3.3-70b-versatile became Enterprise-only on Groq (Oct 2026); gpt-oss-120b is the developer-plan production model.
+const MODEL = 'openai/gpt-oss-120b';
 const MAX_TOKENS = 2000; // the web app asks for at most 1800
 const MAX_AI_BODY = 64 * 1024;
 const MAX_SNAPSHOT_BODY = 1024 * 1024;
@@ -60,6 +61,8 @@ export function sanitizeBody(body) {
   const t = Number(body.temperature);
   return {
     model: MODEL,
+    reasoning_effort: 'low', // gpt-oss reasons before answering; keep that short so the token budget reaches the answer
+    include_reasoning: false, // the pages parse the reply as JSON — keep the reasoning text out of it
     messages,
     temperature: Number.isFinite(t) ? Math.min(1, Math.max(0, t)) : 0.4,
     max_tokens: Math.min(MAX_TOKENS, Math.max(1, Number(body.max_tokens) || 900)),

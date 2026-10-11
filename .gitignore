@@ -38,3 +38,6 @@ mobile/build-*.tar.gz
 
 # misc
 .cache/
+
+# wrangler local state
+.wrangler/

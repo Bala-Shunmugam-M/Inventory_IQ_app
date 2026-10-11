@@ -141,7 +141,7 @@ function phone() {
   const store = new Map();
   const AS = { getItem: async (k) => store.get(k) ?? null, setItem: async (k, v) => store.set(k, v), multiRemove: async (ks) => ks.forEach((k) => store.delete(k)) };
   const st = load(src('storage.js'), { AsyncStorage: AS, Alert: { alert() {} } });
-  const cl = load(src('cloud.js').replace("API_BASE = ''", "API_BASE = 'https://api.example'"),
+  const cl = load(src('cloud.js').replace(/API_BASE = '[^']*'/, "API_BASE = 'https://api.example'"),
     { AsyncStorage: AS, fetch: (u, i) => worker.fetch(new Request(u, i), { DB }), ...st });
   return { ...st, ...cl };
 }
