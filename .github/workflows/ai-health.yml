@@ -6,7 +6,8 @@ on:
     - cron: '17 3 * * *' # daily, 03:17 UTC
   workflow_dispatch:
 
-permissions: {}
+permissions:
+  contents: read
 
 jobs:
   ping:
@@ -22,6 +23,13 @@ jobs:
             -H 'Authorization: Bearer healthcheck' "$W/api/stores/IQ-AAAAAAAAAA/snapshot")
           echo "fake-store snapshot -> $code"
           [ "$code" = 401 ]
+
+      - uses: actions/checkout@v4
+      - name: Cloud-sync round trip (save, read back, reject stale write)
+        env:
+          HEALTH_STORE_ID: ${{ secrets.HEALTH_STORE_ID }}
+          HEALTH_STORE_TOKEN: ${{ secrets.HEALTH_STORE_TOKEN }}
+        run: node .github/live-sync.mjs
 
       - name: Call /api/ai and expect a complete JSON reply
         run: |
