@@ -1,0 +1,24 @@
+name: AI health
+
+# Catches a retired/renamed Groq model or a dead key before users do. A failed run emails the repo owner.
+on:
+  schedule:
+    - cron: '17 3 * * *' # daily, 03:17 UTC
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/ai and expect a non-empty reply
+        run: |
+          # Origin must be the Pages site or the Worker returns 403. Uses 1 of the 300 daily AI calls.
+          out=$(curl -sS --max-time 60 -X POST \
+            -H 'Origin: https://bala-shunmugam-m.github.io' \
+            -H 'Content-Type: text/plain;charset=UTF-8' \
+            -d '{"messages":[{"role":"user","content":"Reply with just OK"}],"max_tokens":50}' \
+            https://inventoryiq-llm-proxy.balashunmugamruthran.workers.dev/api/ai)
+          echo "$out" | head -c 500; echo
+          echo "$out" | jq -e '.choices[0].message.content | length > 0' > /dev/null
