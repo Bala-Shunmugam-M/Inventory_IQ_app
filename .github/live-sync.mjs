@@ -1,4 +1,4 @@
-// Daily cloud-sync round trip against the live Worker, run by .github/workflows/ai-health.yml.
+// Weekly cloud-sync round trip against the live Worker, run by .github/workflows/ai-health.yml.
 // Reuses one fixed test store (HEALTH_STORE_ID / HEALTH_STORE_TOKEN secrets) so the DB doesn't grow.
 import assert from 'node:assert/strict';
 
